@@ -2,6 +2,10 @@
 
 IPPL is configured with CMake. A minimal build needs a C++20 compiler, MPI, and Kokkos. FFT and solver chapters require builds with `IPPL_ENABLE_FFT=ON` and usually `IPPL_ENABLE_SOLVERS=ON`.
 
+For browser-based experiments, open the prepared IPPL devcontainer branch in GitHub Codespaces:
+
+[Open IPPL devcontainer in Codespaces](https://codespaces.new/IPPL-framework/ippl?ref=ippl-container)
+
 ## Minimal program
 
 ```cpp
@@ -20,6 +24,119 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 ```
+
+## Compile and run the first target
+
+The devcontainer path is the most reproducible way to compile manual examples because the compiler, MPI, Kokkos, HeFFTe, and FFTW stack are all selected together. Start from the IPPL source tree inside the container:
+
+```bash
+cd /workspaces/ippl
+.devcontainer/scripts/configure.sh
+```
+
+Build and run the smoke target:
+
+```bash
+cmake --build build/devcontainer --target FFT --parallel 2
+ctest --preset devcontainer-smoke
+```
+
+The expected result is a single passing FFT test:
+
+```text
+Start 17: FFT
+1/1 Test #17: FFT ..............................   Passed
+
+100% tests passed, 0 tests failed out of 1
+```
+
+This target is intentionally small, but it exercises the real stack: IPPL, MPI, Kokkos, HeFFTe, and FFTW.
+
+## Compile a small IPPL program
+
+A minimal standalone program can be developed as a small CMake project. During early example development, the most robust pattern is to consume IPPL as a CMake subproject so that the example uses the same dependency configuration as the IPPL source tree.
+
+Create `hello_ippl.cpp`:
+
+```cpp
+#include "Ippl.h"
+
+int main(int argc, char* argv[]) {
+    ippl::initialize(argc, argv);
+
+    *ippl::Info << "Hello from rank "
+                << ippl::Comm->rank()
+                << " of "
+                << ippl::Comm->size()
+                << ippl::endl;
+
+    ippl::finalize();
+    return 0;
+}
+```
+
+Create `CMakeLists.txt` next to it:
+
+```cmake
+cmake_minimum_required(VERSION 3.24)
+
+project(ippl_hello LANGUAGES CXX)
+
+set(IPPL_PLATFORMS "SERIAL;OPENMP" CACHE STRING "" FORCE)
+set(IPPL_ENABLE_FFT ON CACHE BOOL "" FORCE)
+set(IPPL_ENABLE_SOLVERS ON CACHE BOOL "" FORCE)
+set(IPPL_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(IPPL_ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(Kokkos_VERSION "git.4.7.02" CACHE STRING "" FORCE)
+set(Heffte_VERSION "git.v2.4.1" CACHE STRING "" FORCE)
+set(Heffte_ENABLE_FFTW ON CACHE BOOL "" FORCE)
+set(IPPL_SOURCE_DIR "/workspaces/ippl" CACHE PATH "IPPL source tree")
+
+add_subdirectory("${IPPL_SOURCE_DIR}" ippl-build)
+
+add_executable(hello_ippl hello_ippl.cpp)
+target_link_libraries(hello_ippl PRIVATE IPPL::ippl)
+```
+
+Configure, build, and run it inside the devcontainer:
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=mpicxx
+cmake --build build --target hello_ippl --parallel 2
+mpiexec --oversubscribe -n 2 build/hello_ippl
+```
+
+Expected output:
+
+```text
+Hello from rank 0 of 2
+Hello from rank 1 of 2
+```
+
+For installed IPPL packages, the `CMakeLists.txt` becomes shorter:
+
+```cmake
+cmake_minimum_required(VERSION 3.24)
+
+project(ippl_hello LANGUAGES CXX)
+
+find_package(IPPL REQUIRED CONFIG)
+
+add_executable(hello_ippl hello_ippl.cpp)
+target_link_libraries(hello_ippl PRIVATE IPPL::ippl)
+```
+
+Use the same compiler/MPI stack that was used to build IPPL:
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DCMAKE_CXX_COMPILER=mpicxx \
+  -DCMAKE_PREFIX_PATH=/path/to/ippl/install
+cmake --build build
+mpiexec -n 2 build/hello_ippl
+```
+
+Do not mix a host compiler, a different MPI installation, or a different Kokkos/HeFFTe installation with an IPPL build from the devcontainer.
 
 ## Common configure modes
 
@@ -61,4 +178,3 @@ cmake -S /path/to/ippl -B build-cuda \
 | `IPPL_ENABLE_TESTS` | Enables integration tests and examples used as documentation. |
 | `IPPL_ENABLE_UNIT_TESTS` | Enables GoogleTest-based unit tests. |
 | `IPPL_USE_ALTERNATIVE_VARIANT` | Compatibility path for some CUDA/GCC combinations. |
-

@@ -2,6 +2,21 @@
 
 The IPPL `FFT` layer wraps scalable transforms and uses HeFFTe as the distributed backend. FFT support is optional at configure time and should be enabled with `IPPL_ENABLE_FFT=ON`.
 
+## Run the FFT smoke example in the browser
+
+Open the IPPL devcontainer branch in GitHub Codespaces:
+
+[Open IPPL FFT environment in Codespaces](https://codespaces.new/IPPL-framework/ippl?ref=ippl-container)
+
+After Codespaces finishes creating the container, open a terminal in the browser and run:
+
+```bash
+cmake --build build/devcontainer --target FFT --parallel 2
+ctest --preset devcontainer-smoke
+```
+
+The smoke target builds the `unit_tests/FFT/FFT.cpp` executable and runs it through CTest with the same MPI, Kokkos, HeFFTe, and FFTW stack configured by the devcontainer.
+
 ## Transform types
 
 | Transform tag | Field type | Meaning |
