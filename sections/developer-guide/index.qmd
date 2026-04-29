@@ -65,6 +65,21 @@ Each public class or function should answer:
 4. Add a manual example that states the physical problem, required CMake options, run command, and expected diagnostic.
 5. Add Doxygen comments for every public constructor, parameter, and result query.
 
+## Extending ALPINE solver dispatch
+
+ALPINE examples such as `alpine/LandauDamping.cpp` do not instantiate solvers directly in the driver. The driver parses the solver name and hands it to `LandauDampingManager`; the manager creates a `FieldSolver`, and `FieldSolver` initializes the concrete solver through the manager-level solver variant in `src/Manager/datatypes.h`.
+
+When adding a new solver backend such as a Ginkgo-based Poisson solver, update both the type layer and the runtime dispatch:
+
+1. Add the solver header and alias in `src/Manager/datatypes.h`.
+2. Add the alias to the `Solver_t` variant so `FieldSolverBase` can store it.
+3. Add a solver-name branch in `alpine/FieldSolver.hpp::initSolver()`.
+4. Add an initializer that creates the `ParameterList`, sets RHS/LHS or gradient output consistently with the solver contract, and calls `initSolverWithParams`.
+5. Add a `runSolver()` branch that extracts the solver from the variant and calls `solve()`.
+6. Extend the relevant mini-app CLI documentation and tests, preferably starting with `test/solver/TestCGSolver.cpp` for manufactured-solution convergence and `alpine/LandauDamping.cpp` for a full PIC workflow.
+
+For Landau damping, solver choices currently include FFT/open-boundary FFT paths, plain CG, PCG, and FEM-oriented paths. Any new solver should make its boundary-condition assumptions explicit and state whether it computes the scalar potential, the field gradient, or both.
+
 ## Testing expectations
 
 Tests should cover both the numerical contract and the distributed-memory contract. A solver test should normally include a known analytic result or conservation check, while a layout or communication test should include rank-count-sensitive behavior.

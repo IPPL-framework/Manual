@@ -115,6 +115,31 @@ With `output_type == SOL`, the RHS field is overwritten with the potential in th
 
 The first documented examples should come from `test/solver`: Gaussian convergence, sphere tests, Hockney-style comparisons, Vico-Greengard comparisons, and FEM Poisson tests.
 
+## Conjugate-gradient Poisson solver
+
+`PoissonCG` solves the Poisson problem with a finite-difference Laplace operator. The plain mode uses conjugate gradients; the preconditioned mode uses the same operator in a PCG algorithm and configures the preconditioner through `ParameterList`.
+
+The main parameters used by `src/PoissonSolvers/PoissonCG.h`, `test/solver/TestCGSolver.cpp`, and `alpine/FieldSolver.hpp` are:
+
+| Key | Meaning |
+|---|---|
+| `solver` | `non-preconditioned` for CG or `preconditioned` for PCG. |
+| `preconditioner_type` | `jacobi`, `richardson`, `gauss-seidel`, `ssor`, and experimental polynomial variants where available. |
+| `richardson_iterations` | Number of Richardson preconditioner iterations. |
+| `gauss_seidel_inner_iterations` | Inner Gauss-Seidel or SSOR iterations. |
+| `gauss_seidel_outer_iterations` | Outer Gauss-Seidel or SSOR iterations. |
+| `communication` | Enables halo communication while applying supported preconditioners. |
+| `ssor_omega` | SSOR relaxation parameter. |
+| `max_iterations` | Iteration cap for the linear solve. |
+| `tolerance` | Residual tolerance. |
+| `output_type` | Usually `GRAD` when the solver should also compute the electric field. |
+
+`TestCGSolver` verifies convergence against a manufactured periodic solution. Its command-line parser accepts a grid-size exponent and optional scaling/preconditioner selectors; for example `j` selects Jacobi, `r` selects Richardson, `g` selects Gauss-Seidel, and `s` selects SSOR. The test prints relative error, residual, and iteration count, making it the right first regression test when changing the CG or PCG implementation.
+
+The Landau damping mini-app exercises the same solver path in a full PIC workflow. In that path, `FieldSolver::initPCGSolver()` translates the command-line preconditioner arguments into `ParameterList` entries, then initializes `PoissonCG` as the scalar potential solve and requests gradient output for the electric field.
+
+The preconditioner work is documented in ETH CSE theses on matrix-free PCG preconditioning [@bolliger2024matrixFreePreconditioner; @schreiner2024matrixFreePreconditioner] and in earlier IPPL CG work [@vinciguerra2021performancePortableCg].
+
 ## Open-boundary Gaussian test
 
 `test/solver/TestGaussian.cpp` is the best first solver example. It solves
@@ -177,6 +202,8 @@ After `solve()`, the scalar RHS field contains the solution when `output_type` i
 | `BIHARMONIC` | Biharmonic open-boundary variant, tested separately. |
 
 The solver owns or constructs auxiliary domains for doubled fields, complex Fourier fields, Green functions, and, for Vico variants, larger Green function workspaces.
+
+Related ETH work covers the state of the open-boundary FFT solver and alternative open Poisson directions, including Vico-Greengard improvements and a dual-space multilevel kernel-splitting approach [@montanaro2023openBoundaryFftPoisson; @ammann2024dualSpaceKernelSplitting].
 
 ## Sphere test
 

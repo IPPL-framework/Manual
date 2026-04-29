@@ -13,6 +13,16 @@ This chapter collects IPPL-related papers, software records, and presentation ma
 - The Zenodo software snapshot records the IPPL state used for the ACM TOMS Poisson solver paper [@ippl2025vicoGreengardSoftware].
 - The 2026 HPSF presentation gives a current overview of IPPL as a Kokkos-based particle-mesh library [@adelmann2026ipplHpsfPresentation].
 
+## ETH CSE theses and reports
+
+The AMAS ETH CSE project archive includes several IPPL-relevant theses that are useful background for manual chapters and developer work:
+
+- Conjugate-gradient and preconditioner work: early performance-portable CG development, matrix-free PCG preconditioners, and Landau damping scaling studies [@vinciguerra2021performancePortableCg; @bolliger2024matrixFreePreconditioner; @schreiner2024matrixFreePreconditioner].
+- Poisson solver extensions: open-boundary FFT improvements, dual-space kernel splitting, Monte Carlo Poisson directions, and related performance-portable Poisson solver work [@montanaro2023openBoundaryFftPoisson; @ammann2024dualSpaceKernelSplitting; @schucan2025monteCarloPoisson; @mayani2021hosePoisson].
+- Particle-mesh and load-balancing work: ORB load balancing, P3M, rank independence, and mixed execution spaces [@ligotino2021loadBalancingIppl; @schwab2025p3mAlgorithm; @vinciguerra2023rankIndependence].
+- FEM and Maxwell-related building blocks: scalar FEM, Nedelec spaces, and higher-order finite elements [@buehler2023finiteElementBlocks; @pietak2025nedelecSpaceIppl; @hutter2026higherOrderFiniteElements].
+- Application-level IPPL material includes cosmological structure formation with IPPL [@crazzolara2024cosmologicalStructureFormation].
+
 ## References
 
 ::: {#refs}

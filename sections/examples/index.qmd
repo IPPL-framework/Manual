@@ -62,6 +62,43 @@ Concepts exercised: `ParticleBase`, `ParticleSpatialLayout`, `ParticleAttrib`, `
 
 Expected checks: particle count is conserved after migration, `scatterCIC` checks charge conservation against the mesh field sum, and timers report particle update, scatter, gather, repartitioning, and velocity/position updates.
 
+### `LandauDamping`
+
+Purpose: runs a production-style electrostatic particle-in-cell mini-app through the ALPINE manager stack. The driver in `alpine/LandauDamping.cpp` creates a `LandauDampingManager`, which wires together `AlpineManager`, `FieldContainer`, `ParticleContainer`, `FieldSolver`, and load balancing. It is the best example for users who want to see the library-level particle, field, interpolation, solver, timing, and manager machinery in one executable.
+
+```bash
+srun ./LandauDamping Nx Ny Nz Np Nt solver_type load_balancing LeapFrog \
+  [preconditioner_type [preconditioner_params...]] \
+  --overallocate 2.0 --info 5
+```
+
+| Argument | Meaning |
+|---|---|
+| `Nx Ny Nz` | Number of grid points in each direction. |
+| `Np` | Number of simulation particles. |
+| `Nt` | Number of time steps. |
+| `solver_type` | `FFT`, `OPEN`, `CG`, `PCG`, or `FEM`. |
+| `load_balancing` | Particle load-balancing threshold; `0.1` means 10 percent. |
+| `LeapFrog` | Time-stepper used by the current Landau damping path. |
+
+`CG` selects the plain conjugate-gradient path. `PCG` selects the preconditioned path and requires preconditioner arguments:
+
+| Preconditioner | Extra arguments |
+|---|---|
+| `jacobi` | none |
+| `richardson` | `iterations communication`, where `communication` is `0` or `1` |
+| `gauss-seidel` | `inner_iterations outer_iterations communication`, where `communication` is `0` or `1` |
+| `ssor` | `inner_iterations outer_iterations omega`, commonly with `omega = 1.5707963` |
+
+Example PCG run:
+
+```bash
+srun ./LandauDamping 256 256 256 134217728 20 PCG 0.1 LeapFrog \
+  ssor 4 2 1.5707963 --overallocate 2.0 --info 5
+```
+
+Concepts exercised: `LandauDampingManager`, `AlpineManager`, `FieldContainer`, `ParticleContainer`, `FieldSolver`, `PoissonCG`, `ParameterList`, ORB load balancing, particle migration, field solve, gather/scatter, diagnostics, and timings. The ALPINE/IPPL paper gives the broader performance-portability context for Landau damping mini-apps [@muralikrishnan2024scalingPicMiniapps]; recent ETH theses document preconditioner behavior and Landau damping scaling studies [@bolliger2024matrixFreePreconditioner; @schreiner2024matrixFreePreconditioner].
+
 ### `TestGaussian`
 
 Purpose: tests `FFTOpenPoissonSolver` with a Gaussian source and analytic potential.
