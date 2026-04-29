@@ -2,14 +2,22 @@
 
 The playground keeps the manual page open while compilation and execution happen in a local Docker container. The first example is deliberately small: edit a `Hello IPPL` program, compile it, run it with MPI, inspect stdout, and edit again.
 
+## Build the local runner
+
+Build the runner image once from the public IPPL source tree:
+
+```bash
+git clone --depth 1 --branch ippl-container https://github.com/IPPL-framework/ippl.git
+cd ippl
+docker build -t ippl-runner:local -f tools/browser-runner/Dockerfile .
+```
+
 ## Start the local runner
 
 Start the runner on the local machine:
 
 ```bash
-docker run --rm \
-  -p 127.0.0.1:5050:5050 \
-  ghcr.io/ippl-framework/ippl-runner:latest
+docker run --rm -p 127.0.0.1:5050:5050 ippl-runner:local
 ```
 
 The runner prints a token:

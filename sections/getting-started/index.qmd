@@ -25,12 +25,13 @@ int main(int argc, char* argv[]) {
 
 ## Try it in the browser
 
-The fastest first experiment is the browser playground in @sec-playground. Keep this manual open, start the local Docker runner, paste the token printed by the runner, then edit, compile, run, inspect stdout, and edit again.
+The fastest first experiment is the browser playground in @sec-playground. Keep this manual open, build the local Docker runner once, paste the token printed by the runner, then edit, compile, run, inspect stdout, and edit again.
 
 ```bash
-docker run --rm \
-  -p 127.0.0.1:5050:5050 \
-  ghcr.io/ippl-framework/ippl-runner:latest
+git clone --depth 1 --branch ippl-container https://github.com/IPPL-framework/ippl.git
+cd ippl
+docker build -t ippl-runner:local -f tools/browser-runner/Dockerfile .
+docker run --rm -p 127.0.0.1:5050:5050 ippl-runner:local
 ```
 
 The runner image contains a CPU-only IPPL installation. It is intentionally scoped to short one-file examples, with no FFT, solver, or GPU stack.
