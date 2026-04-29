@@ -1,0 +1,19 @@
+# Literature {#sec-literature}
+
+This chapter collects IPPL-related papers, software records, and presentation material used by the manual.
+
+## Core publications
+
+- The ALPINE/IPPL particle-in-cell mini-app paper studies scaling and performance portability for plasma applications on pre-exascale systems [@muralikrishnan2024scalingPicMiniapps].
+- The free-space spectral Poisson solver paper presents performance-portable Hockney-Eastwood and Vico-Greengard solvers implemented in IPPL [@mayani2025freeSpacePoisson].
+
+## Related records
+
+- The arXiv preprint for the ALPINE/IPPL study is kept for historical context [@muralikrishnan2022alpineArxiv].
+- The Zenodo software snapshot records the IPPL state used for the ACM TOMS Poisson solver paper [@ippl2025vicoGreengardSoftware].
+- The 2026 HPSF presentation gives a current overview of IPPL as a Kokkos-based particle-mesh library [@adelmann2026ipplHpsfPresentation].
+
+## References
+
+::: {#refs}
+:::

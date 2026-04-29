@@ -1,0 +1,205 @@
+# Poisson Solvers {#sec-poisson-solvers}
+
+IPPL contains several Poisson solver paths for periodic, open, and finite-element formulations. These solvers are central for particle-mesh simulations where charge or mass density on a mesh produces electric or gravitational fields.
+
+## Main classes
+
+| Class | Role |
+|---|---|
+| `Poisson` | Common Poisson solver interface. |
+| `FFTPeriodicPoissonSolver` | FFT-based periodic solver. |
+| `FFTOpenPoissonSolver` | FFT-based open-boundary solver. |
+| `FFTTruncatedGreenPeriodicPoissonSolver` | Truncated Green function approach. |
+| `PoissonCG` | Conjugate-gradient path over field operators. |
+| `FEMPoissonSolver` | FEM-based Poisson solver. |
+| `PreconditionedFEMPoissonSolver` | FEM Poisson solver with preconditioning. |
+
+The free-space spectral Poisson solver work is an important reference for this chapter [@mayani2025freeSpacePoisson].
+
+## Solver hierarchy
+
+```{mermaid}
+classDiagram
+  class Poisson {
+    +setLhs(lhs)
+    +setRhs(rhs)
+    +setGradient(grad)
+    +updateParameter(key, value)
+    +mergeParameters(params)
+    +solve()
+  }
+  class FFTPeriodicPoissonSolver {
+    +setRhs(rhs)
+    +solve()
+  }
+  class FFTOpenPoissonSolver {
+    +setRhs(rhs)
+    +setGradFD()
+    +solve()
+    +getHessian()
+  }
+  class FFTTruncatedGreenPeriodicPoissonSolver {
+    +setRhs(rhs)
+    +solve()
+    +greensFunction()
+  }
+
+  Poisson <|-- FFTPeriodicPoissonSolver
+  Poisson <|-- FFTOpenPoissonSolver
+  Poisson <|-- FFTTruncatedGreenPeriodicPoissonSolver
+```
+
+The base `Poisson<FieldLHS, FieldRHS>` class stores LHS, RHS, optional gradient output, and solver parameters. It defines output modes:
+
+| Output type | Meaning |
+|---|---|
+| `SOL` | Store the scalar potential solution. |
+| `GRAD` | Store the gradient/electric field. |
+| `SOL_AND_GRAD` | Store both solution and gradient. |
+
+The base equation convention is documented as `-laplace(lhs) = rhs`; the open solver header states the equivalent implementation convention `laplace(phi) = -rho` and `E = -grad(phi)`.
+
+## FFT solver parameters
+
+FFT-based Poisson solvers inherit the FFT parameter set:
+
+```cpp
+params.add("use_heffte_defaults", false);
+params.add("use_pencils", true);
+params.add("use_reorder", false);
+params.add("use_gpu_aware", true);
+params.add("comm", ippl::a2av);
+params.add("r2c_direction", 0);
+```
+
+Additional solver-specific keys include:
+
+| Solver | Key | Meaning |
+|---|---|---|
+| `Poisson` base | `output_type` | `SOL`, `GRAD`, or `SOL_AND_GRAD`. |
+| `FFTOpenPoissonSolver` | `algorithm` | `HOCKNEY`, `VICO`, `BIHARMONIC`, or `DCT_VICO`. |
+| `FFTOpenPoissonSolver` | `hessian` | Enable Hessian output through `getHessian()`. |
+| `FFTTruncatedGreenPeriodicPoissonSolver` | `alpha` | Ewald-style smoothing/control parameter. |
+| `FFTTruncatedGreenPeriodicPoissonSolver` | `force_constant` | Force/Green function scale. |
+
+## Periodic FFT solver
+
+`FFTPeriodicPoissonSolver` solves periodic Poisson problems using real-to-complex FFTs. `test/solver/TestFFTPeriodicPoissonSolver.cpp` verifies the solver against a smooth manufactured solution on `[-1,1]^3` over multiple grid sizes.
+
+Minimal pattern:
+
+```cpp
+using Field_t  = ippl::Field<double, Dim, Mesh_t, Centering_t>;
+using VField_t = ippl::Field<ippl::Vector<double, Dim>, Dim, Mesh_t, Centering_t>;
+using Solver_t = ippl::FFTPeriodicPoissonSolver<VField_t, Field_t>;
+
+Field_t rhs(mesh, layout);
+
+ippl::ParameterList params;
+params.add("output_type", Solver_t::SOL);
+params.add("use_heffte_defaults", false);
+params.add("use_pencils", true);
+params.add("use_gpu_aware", true);
+params.add("comm", ippl::a2av);
+params.add("r2c_direction", 0);
+
+Solver_t solver;
+solver.mergeParameters(params);
+solver.setRhs(rhs);
+solver.solve();
+```
+
+With `output_type == SOL`, the RHS field is overwritten with the potential in the current test pattern.
+
+## Verification material
+
+The first documented examples should come from `test/solver`: Gaussian convergence, sphere tests, Hockney-style comparisons, Vico-Greengard comparisons, and FEM Poisson tests.
+
+## Open-boundary Gaussian test
+
+`test/solver/TestGaussian.cpp` is the best first solver example. It solves
+
+\[
+\nabla^2 \phi = -\rho
+\]
+
+for a smooth Gaussian source on the unit box and compares the computed potential against the analytic expression involving the error function.
+
+The command-line interface is:
+
+```bash
+srun ./TestGaussian <nx> <ny> <nz> <reshape> <comm> <reorder> <algorithm> --info 5
+```
+
+Accepted values:
+
+| Argument | Values |
+|---|---|
+| `reshape` | `pencils`, `slabs` |
+| `comm` | `a2a`, `a2av`, `p2p`, `p2p_pl` |
+| `reorder` | `reorder`, `no-reorder` |
+| `algorithm` | `HOCKNEY`, `VICO`, `DCT_VICO` |
+
+Example:
+
+```bash
+srun ./TestGaussian 64 64 64 pencils a2a no-reorder HOCKNEY --info 5
+```
+
+The solver is configured through `ParameterList`:
+
+```cpp
+ippl::ParameterList params;
+params.add("use_pencils", true);
+params.add("comm", ippl::a2a);
+params.add("use_reorder", false);
+params.add("use_heffte_defaults", false);
+params.add("use_gpu_aware", true);
+params.add("r2c_direction", 0);
+params.add("algorithm", Solver_t::HOCKNEY);
+params.add("output_type", Solver_t::SOL);
+
+Solver_t solver(rho, params);
+solver.solve();
+```
+
+After `solve()`, the scalar RHS field contains the solution when `output_type` is `SOL`. The test computes a relative error with `norm(rho - exact) / norm(exact)` and repeats the solve five times for timing studies.
+
+## Open-boundary algorithms
+
+`FFTOpenPoissonSolver` provides the open-boundary algorithms used in the free-space spectral Poisson solver work [@mayani2025freeSpacePoisson]:
+
+| Algorithm | Use |
+|---|---|
+| `HOCKNEY` | Classical doubled-domain convolution approach. |
+| `VICO` | Vico-Greengard free-space convolution with spectral convergence for smooth sources. |
+| `DCT_VICO` | Improved Vico-Greengard path using cosine type-I transform support. |
+| `BIHARMONIC` | Biharmonic open-boundary variant, tested separately. |
+
+The solver owns or constructs auxiliary domains for doubled fields, complex Fourier fields, Green functions, and, for Vico variants, larger Green function workspaces.
+
+## Sphere test
+
+`test/solver/TestSphere.cpp` tests the open solver for a gravitational sphere. The source is constant inside a radius and zero outside, with an analytic potential inside and outside the sphere.
+
+Run shape:
+
+```bash
+srun ./TestSphere HOCKNEY --info 5
+srun ./TestSphere VICO --info 5
+srun ./TestSphere DCT_VICO --info 5
+```
+
+The test sweeps grid sizes `{16, 32, 64, 128}` and prints spacing/error pairs. This is a useful companion to the Gaussian test because the source has a compact support discontinuity at the sphere radius.
+
+## Truncated Green periodic solver
+
+`FFTTruncatedGreenPeriodicPoissonSolver` solves a periodic convolution problem with a Green function
+
+\[
+G(r) = C \frac{\operatorname{erf}(\alpha r)}{r},
+\]
+
+where `alpha` controls the long-range interaction and `force_constant` is the scale factor. The solver stores the real Green function, transformed Green function, transformed density, and temporary complex fields.
+
+The first manual example should come from `test/solver/TestFFTTruncatedGreenPeriodicPoissonSolver.cpp`.

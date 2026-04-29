@@ -1,0 +1,54 @@
+/*-- scss:rules --*/
+
+:root {
+  --ippl-blue: #174a7c;
+  --ippl-cyan: #16a3b8;
+  --ippl-ink: #17212b;
+  --ippl-muted: #5b6876;
+  --ippl-line: #d9e2ec;
+}
+
+body {
+  color: var(--ippl-ink);
+}
+
+.title {
+  color: var(--ippl-blue);
+}
+
+.subtitle {
+  color: var(--ippl-muted);
+}
+
+.hero {
+  align-items: center;
+  border-bottom: 1px solid var(--ippl-line);
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.6fr);
+  margin: 1rem 0 2rem;
+  padding-bottom: 2rem;
+}
+
+.hero img {
+  max-width: 260px;
+  width: 100%;
+}
+
+.callout-note {
+  border-left-color: var(--ippl-cyan);
+}
+
+pre code {
+  font-size: 0.9rem;
+}
+
+table {
+  font-size: 0.95rem;
+}
+
+@media (max-width: 720px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+}

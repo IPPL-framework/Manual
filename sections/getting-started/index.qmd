@@ -1,0 +1,64 @@
+# Getting Started {#sec-getting-started}
+
+IPPL is configured with CMake. A minimal build needs a C++20 compiler, MPI, and Kokkos. FFT and solver chapters require builds with `IPPL_ENABLE_FFT=ON` and usually `IPPL_ENABLE_SOLVERS=ON`.
+
+## Minimal program
+
+```cpp
+#include "Ippl.h"
+
+int main(int argc, char* argv[]) {
+    ippl::initialize(argc, argv);
+
+    *ippl::Info << "Hello from rank "
+                << ippl::Comm->rank()
+                << " of "
+                << ippl::Comm->size()
+                << ippl::endl;
+
+    ippl::finalize();
+    return 0;
+}
+```
+
+## Common configure modes
+
+```bash
+cmake -S /path/to/ippl -B build-serial \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_CXX_STANDARD=20 \
+  -DIPPL_PLATFORMS=SERIAL
+```
+
+```bash
+cmake -S /path/to/ippl -B build-openmp \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_STANDARD=20 \
+  -DIPPL_PLATFORMS=OPENMP \
+  -DIPPL_ENABLE_FFT=ON \
+  -DIPPL_ENABLE_SOLVERS=ON \
+  -DIPPL_ENABLE_TESTS=ON
+```
+
+```bash
+cmake -S /path/to/ippl -B build-cuda \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_STANDARD=20 \
+  -DIPPL_PLATFORMS=CUDA \
+  -DKokkos_ARCH_AMPERE80=ON \
+  -DCMAKE_CUDA_ARCHITECTURES=80 \
+  -DIPPL_ENABLE_FFT=ON \
+  -DIPPL_ENABLE_SOLVERS=ON
+```
+
+## Build options to document first
+
+| Option | Meaning |
+|---|---|
+| `IPPL_PLATFORMS` | Kokkos backends requested by IPPL, such as `SERIAL`, `OPENMP`, `CUDA`, or `HIP`. |
+| `IPPL_ENABLE_FFT` | Enables FFT support and HeFFTe dependency logic. |
+| `IPPL_ENABLE_SOLVERS` | Enables solver components that depend on FFT or linear solver infrastructure. |
+| `IPPL_ENABLE_TESTS` | Enables integration tests and examples used as documentation. |
+| `IPPL_ENABLE_UNIT_TESTS` | Enables GoogleTest-based unit tests. |
+| `IPPL_USE_ALTERNATIVE_VARIANT` | Compatibility path for some CUDA/GCC combinations. |
+

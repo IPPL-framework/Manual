@@ -1,0 +1,52 @@
+# API Reference {#sec-api-reference}
+
+The manual should not duplicate every class signature. API details should be generated from Doxygen comments in the IPPL source tree.
+
+## Planned integration
+
+1. Build Doxygen from `Doxyfile.api`.
+2. Publish the generated API pages alongside the Quarto manual or link to the existing hosted Doxygen site.
+3. Add stable links from each manual chapter to the relevant class pages.
+
+Local API build:
+
+```bash
+IPPL_SOURCE_DIR=/Users/adelmann/git/ippl doxygen Doxyfile.api
+```
+
+For GitHub Pages, the recommended structure is to render the Quarto manual to `docs/` and place generated Doxygen HTML under `docs/api/`. Manual pages can then link to API pages with stable relative paths such as `api/classippl_1_1Field.html` once the Doxygen output naming is confirmed.
+
+Rendered local entry point: [Doxygen API index](../../api/index.html).
+
+## Link policy
+
+The manual should link to API pages for signatures and overloads, while keeping conceptual explanations in Quarto. This avoids stale duplicated declarations.
+
+| Manual content | API reference content |
+|---|---|
+| Workflow, assumptions, invariants, examples. | Constructors, method signatures, template parameters. |
+| Backend selection and parameter meaning. | Exact overloads and default values. |
+| Numerical problem statement and expected diagnostics. | Member variables only when public or intentionally exposed. |
+| Developer extension rules. | Public and protected interfaces. |
+
+## Key entry points
+
+| Header | Manual chapter | API page |
+|---|---|---|
+| `Ippl.h` | @sec-getting-started | [source](../../api/Ippl_8h_source.html) |
+| `Index/Index.h`, `Index/NDIndex.h` | @sec-core-concepts | [`Index`](../../api/classippl_1_1Index.html), [`NDIndex`](../../api/classippl_1_1NDIndex.html) |
+| `Meshes/UniformCartesian.h` | @sec-core-concepts, @sec-fields | [`UniformCartesian`](../../api/classippl_1_1UniformCartesian.html) |
+| `Field/Field.h`, `Field/BareField.h` | @sec-fields | [`Field`](../../api/classippl_1_1Field.html), [`BareField`](../../api/classippl_1_1BareField.html) |
+| `FieldLayout/FieldLayout.h` | @sec-fields | [`FieldLayout`](../../api/classippl_1_1FieldLayout.html) |
+| `Particle/ParticleBase.h` | @sec-particles | [`ParticleBase`](../../api/classippl_1_1ParticleBase.html) |
+| `Particle/ParticleSpatialLayout.h` | @sec-particles | [`ParticleSpatialLayout`](../../api/classippl_1_1ParticleSpatialLayout.html) |
+| `Interpolation/CIC.h` | @sec-particle-mesh | [source](../../api/CIC_8h_source.html) |
+| `FFT/FFT.h` | @sec-fft | [`FFT`](../../api/classippl_1_1FFT.html) |
+| `PoissonSolvers/Poisson.h` | @sec-poisson-solvers | [`Poisson`](../../api/classippl_1_1Poisson.html) |
+| `PoissonSolvers/FFTOpenPoissonSolver.h` | @sec-poisson-solvers | [`FFTOpenPoissonSolver`](../../api/classippl_1_1FFTOpenPoissonSolver.html) |
+| `MaxwellSolvers/Maxwell.h` | @sec-maxwell-solvers | [`Maxwell`](../../api/classippl_1_1Maxwell.html) |
+| `MaxwellSolvers/FDTDSolverBase.h` | @sec-maxwell-solvers | [`FDTDSolverBase`](../../api/classippl_1_1FDTDSolverBase.html) |
+| `FEM/FiniteElementSpace.h` | @sec-fem | [`FiniteElementSpace`](../../api/classippl_1_1FiniteElementSpace.html) |
+| `FEM/LagrangeSpace.h`, `FEM/NedelecSpace.h` | @sec-fem | [`LagrangeSpace`](../../api/classippl_1_1LagrangeSpace.html), [`NedelecSpace`](../../api/classippl_1_1NedelecSpace.html) |
+| `Communicate/Communicator.h` | @sec-communication | [`Communicator`](../../api/classippl_1_1mpi_1_1Communicator.html) |
+| `Utility/ParameterList.h` | @sec-core-concepts, @sec-poisson-solvers | [`ParameterList`](../../api/classippl_1_1ParameterList.html) |

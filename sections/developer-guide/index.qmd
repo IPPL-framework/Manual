@@ -1,0 +1,79 @@
+# Developer Guide {#sec-developer-guide}
+
+The developer guide documents how to extend IPPL without breaking portability, correctness, or downstream applications.
+
+## Source tree orientation
+
+| Directory | Responsibility |
+|---|---|
+| `src/Field`, `src/FieldLayout` | Distributed field containers and layouts. |
+| `src/Particle` | Particle containers, attributes, and layouts. |
+| `src/Interpolation` | Particle-field interpolation schemes. |
+| `src/FFT` | FFT abstraction. |
+| `src/PoissonSolvers`, `src/MaxwellSolvers`, `src/LinearSolvers` | Solver infrastructure. |
+| `src/FEM` | Finite-element spaces, elements, and assembly. |
+| `src/Communicate` | MPI wrappers and serialization. |
+| `src/Utility`, `src/Types` | Shared utilities and core types. |
+
+## Extension checklist
+
+1. Identify the ownership boundary: user API, layout, data container, solver, or backend.
+2. Add or update Doxygen comments for public interfaces.
+3. Preserve execution-space correctness; use Kokkos math in device code.
+4. Add tests across representative dimensions, precisions, and execution spaces.
+5. Document the user-facing behavior here and link to Doxygen for signatures.
+
+## Build-system conventions
+
+IPPL uses a target-based CMake model. The public target is `ippl`, with the exported alias `ippl::ippl` for downstream users. Dependency discovery and target wiring should stay centralized in the CMake support files rather than being repeated in examples or tests.
+
+| Rule | Rationale |
+|---|---|
+| Link downstream code to `ippl::ippl` | Keeps include paths, compile definitions, and dependencies attached to the target. |
+| Keep optional dependencies behind CMake options | Avoids forcing all users to build every solver backend. |
+| Use `IPPL_ENABLE_TESTS` and `IPPL_ENABLE_UNIT_TESTS` for test selection | Keeps CI and local verification predictable. |
+| Add dependencies at target scope | Preserves transitive usage requirements for installed packages. |
+
+Minimal downstream shape:
+
+```cmake
+find_package(IPPL CONFIG REQUIRED)
+
+add_executable(my_ippl_code main.cpp)
+target_link_libraries(my_ippl_code PRIVATE ippl::ippl)
+```
+
+## Doxygen comment standard
+
+Public headers should carry enough Doxygen for a library user to call the API and enough implementation notes for a library developer to extend it. The manual should then link to those generated pages instead of duplicating signatures.
+
+Each public class or function should answer:
+
+| Question | Where to document |
+|---|---|
+| What mathematical or runtime object does this represent? | Class brief and manual chapter. |
+| Which communicator, layout, or execution space does it use? | Doxygen details. |
+| Is the call rank-local or collective? | Doxygen details and manual workflow notes. |
+| Which parameters are required, optional, or backend-specific? | Doxygen parameter comments. |
+| Which tests demonstrate expected behavior? | Manual examples and test references. |
+
+## Adding a new backend or solver
+
+1. Add the implementation behind a narrow solver or backend interface.
+2. Keep backend-specific parameters in `ParameterList` when the options are runtime choices.
+3. Provide a minimal manufactured-solution or conservation test.
+4. Add a manual example that states the physical problem, required CMake options, run command, and expected diagnostic.
+5. Add Doxygen comments for every public constructor, parameter, and result query.
+
+## Testing expectations
+
+Tests should cover both the numerical contract and the distributed-memory contract. A solver test should normally include a known analytic result or conservation check, while a layout or communication test should include rank-count-sensitive behavior.
+
+| Area | Expected checks |
+|---|---|
+| Fields | Boundary conditions, halo updates, expression evaluation, reductions. |
+| Particles | Migration, particle-count conservation, boundary behavior, attribute integrity. |
+| Particle-mesh | Charge conservation, gather/scatter consistency, dimension coverage. |
+| FFT and Poisson | Forward/backward consistency, manufactured solution error, backend options. |
+| FEM and Maxwell | Basis correctness, DOF mapping, residuals, convergence or error norms. |
+| Communication | Blocking/nonblocking exchange, collectives, serialization, tag isolation. |

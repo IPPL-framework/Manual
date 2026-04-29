@@ -1,0 +1,153 @@
+# Examples {#sec-examples}
+
+Examples should be treated as executable documentation. Each example page should include the physics or numerical purpose, build flags, run command, expected output, and the IPPL concepts exercised.
+
+## Initial example set
+
+| Example | Source location | Manual purpose |
+|---|---|---|
+| Hello world | Doxygen extras and minimal program | Runtime lifecycle and communicator basics. |
+| PIC test | `test/particle/PICnd.cpp` | End-to-end particle-mesh loop. |
+| Landau damping | `alpine/LandauDamping.cpp` | Production-style manager and PIC mini-app. |
+| Gaussian Poisson | `test/solver/TestGaussian.cpp` | Solver setup and convergence verification. |
+| Maxwell FDTD | `test/maxwell` | Electromagnetic solver setup. |
+| P3M heating | `examples/collisions/P3MHeating.cpp` | Collision/P3M application pattern. |
+| Cosmology | `cosmology/StructureFormation.cpp` | Particle-mesh gravity workflow. |
+| Field boundary conditions | `test/field/TestFieldBC.cpp` | Mixed face boundary-condition setup. |
+| Laplace field operator | `test/field/TestLaplace.cpp` | Differential operator, periodic BCs, and error reduction. |
+| FFT CC/RC transforms | `test/FFT/TestFFTCC.cpp`, `test/FFT/TestFFTRC.cpp` | Forward/backward transform consistency. |
+| FFT sine/cosine transforms | `test/FFT/TestSine.cpp`, `test/FFT/TestCos.cpp`, `test/FFT/TestCos1.cpp` | Real in-place spectral transforms. |
+| Periodic Poisson | `test/solver/TestFFTPeriodicPoissonSolver.cpp` | Periodic FFT solver with manufactured solution. |
+| Open Poisson sphere | `test/solver/TestSphere.cpp` | Open-boundary gravitational sphere verification. |
+| FEM Lagrange spaces | `unit_tests/FEM/LagrangeSpace.cpp`, `test/solver/fem/TestZeroBC_sin*` | Scalar FEM basis, assembly, and convergence verification. |
+| FEM Nedelec spaces | `unit_tests/FEM/NedelecSpace.cpp`, `test/solver/fem/TestMaxwellDiffusion*` | Edge-element basis, curl operators, and Maxwell diffusion. |
+| Maxwell FDTD | `test/maxwell` | Standard and non-standard FDTD setup and time stepping. |
+
+## Example page template
+
+Each example should use this structure:
+
+```markdown
+## Example name
+
+Source: `path/to/example.cpp`
+
+Purpose:
+: One paragraph explaining the numerical or physics problem.
+
+Build requirements:
+: Relevant CMake flags, backend assumptions, and optional dependencies.
+
+Run:
+: Command line and argument meaning.
+
+Expected result:
+: Key output lines, conservation check, convergence rate, or generated file.
+
+Concepts exercised:
+: IPPL classes and subsystems used by the example.
+```
+
+## First executable examples to expand
+
+### `PICnd`
+
+Purpose: tests a dimension-specialized particle-in-cell workflow with periodic particle boundary conditions, cloud-in-cell gather/scatter, and optional ORB-based repartitioning.
+
+```bash
+srun ./PICnd 128 128 128 10000 10 --info 10
+```
+
+Concepts exercised: `ParticleBase`, `ParticleSpatialLayout`, `ParticleAttrib`, `Field`, `FieldLayout`, `UniformCartesian`, `CIC`, `OrthogonalRecursiveBisection`, reductions, and particle migration.
+
+Expected checks: particle count is conserved after migration, `scatterCIC` checks charge conservation against the mesh field sum, and timers report particle update, scatter, gather, repartitioning, and velocity/position updates.
+
+### `TestGaussian`
+
+Purpose: tests `FFTOpenPoissonSolver` with a Gaussian source and analytic potential.
+
+```bash
+srun ./TestGaussian 64 64 64 pencils a2a no-reorder HOCKNEY --info 5
+```
+
+Concepts exercised: `Field`, `UniformCartesian`, `FieldLayout`, `ParameterList`, HeFFTe options, Hockney/Vico algorithms, norms, and timing output.
+
+### `TestFieldBC`
+
+Purpose: demonstrates mixed face boundary conditions on a 3D scalar field.
+
+Concepts exercised: `BConds`, `PeriodicFace`, `NoBcFace`, `ConstantFace`, `ZeroFace`, `ExtrapolateFace`, `findBCNeighbors`, `apply`, and per-rank field output.
+
+### `TestLaplace`
+
+Purpose: verifies `laplace(field)` against the analytic Laplacian of a trigonometric function.
+
+```bash
+srun ./TestLaplace 64 10
+```
+
+Concepts exercised: periodic boundary conditions, local-to-global coordinate conversion, field expressions, `pow`, `sum`, relative error computation, timers, and `ippl::fence()`.
+
+### `ParticleSendRecv`
+
+Purpose: verifies that spatial particle migration sends particles to the rank owning the region that contains their position.
+
+Concepts exercised: `ParticleSpatialLayout`, `RegionLayout`, particle packing/unpacking, MPI exchange, particle boundary conditions, and global particle-count conservation.
+
+### `ParticleBC`
+
+Purpose: verifies particle boundary-condition behavior on upper and lower faces for `PERIODIC`, `REFLECTIVE`, `SINK`, and `NO`.
+
+Concepts exercised: `NDRegion`, `PRegion`, `ParticleLayout::applyBC`, and position attribute updates.
+
+### `GatherScatterTest`
+
+Purpose: verifies CIC gather/scatter behavior across one, two, and three dimensions.
+
+Concepts exercised: constant-field gather, additive gather, charge-conserving scatter, custom scatter range policies, and hashed scatter.
+
+### `TestFFTCC` and `TestFFTRC`
+
+Purpose: verify forward/backward FFT consistency for complex-to-complex and real-to-complex transforms.
+
+Concepts exercised: `FFT<CCTransform>`, `FFT<RCTransform>`, input/output layouts, `r2c_direction`, HeFFTe defaults, and ghost-free owned-region transforms.
+
+### `TestFFTPeriodicPoissonSolver`
+
+Purpose: verifies the periodic FFT Poisson solver on a smooth manufactured solution over grid refinements.
+
+Concepts exercised: `FFTPeriodicPoissonSolver`, `Poisson::OutputType`, `ParameterList`, RHS assignment in a Kokkos kernel, solution/gradient output modes, and relative error norms.
+
+### `TestSphere`
+
+Purpose: verifies `FFTOpenPoissonSolver` on the gravitational potential of a sphere.
+
+```bash
+srun ./TestSphere HOCKNEY --info 5
+```
+
+Concepts exercised: open-boundary algorithms, analytic source/solution kernels, grid refinement, and `norm(rho) / norm(exact)` style error measurement.
+
+### FEM Poisson and Lagrange tests
+
+Purpose: verify scalar finite-element spaces on structured meshes with homogeneous, periodic, and non-homogeneous boundary conditions.
+
+Concepts exercised: `FiniteElementSpace`, `LagrangeSpace`, element-local to global DOF mapping, load-vector assembly, operator application through `evaluateAx`, lumped mass construction, and L2 error computation.
+
+Expected checks: manufactured-solution error decreases under refinement, boundary DOFs match the selected condition, and preconditioned variants report residual behavior.
+
+### FEM Maxwell diffusion tests
+
+Purpose: verify the Nedelec finite-element path for vector-valued Maxwell diffusion problems.
+
+Concepts exercised: `NedelecSpace`, vector DOFs, basis curls, `FEMVector`, PCG solver parameters, reconstruction to points, and L2 error checks.
+
+Expected checks: the solver reaches the requested tolerance or iteration limit, exposes residue and iteration count, and produces the expected convergence behavior for the manufactured vector field.
+
+### Maxwell FDTD tests
+
+Purpose: verify finite-difference time-domain electromagnetic stepping and boundary handling.
+
+Concepts exercised: `FDTDSolverBase`, `StandardFDTDSolver`, `NonStandardFDTDSolver`, source fields, electric and magnetic fields, `fdtd_bc`, `timeShift`, `applyBCs`, and `evaluate_EB`.
+
+Expected checks: examples should state the time step and grid spacing, report field diagnostics, and make boundary assumptions explicit.

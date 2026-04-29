@@ -1,0 +1,16 @@
+# Performance Portability {#sec-performance-portability}
+
+IPPL's portability model is based on Kokkos execution and memory spaces, MPI for distributed memory, and optional HeFFTe FFT backends. Tests are instantiated over precision, dimension, and execution spaces to catch portability errors early.
+
+## Themes
+
+- Dimension-independent algorithms from 1D through 6D.
+- Mixed precision with `float` and `double`.
+- Mixed execution spaces for fields and particle attributes.
+- GPU-aware MPI and backend-specific FFT support.
+- Explicit synchronization with `ippl::fence()` when required.
+
+## Benchmark references
+
+The ALPINE/IPPL mini-app study documents particle-in-cell scaling and performance portability on pre-exascale systems [@muralikrishnan2024scalingPicMiniapps]. The free-space spectral Poisson solver paper documents CPU/GPU scaling of solver kernels and FFT-heavy workloads [@mayani2025freeSpacePoisson].
+

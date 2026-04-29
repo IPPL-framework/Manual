@@ -1,0 +1,272 @@
+# Fields {#sec-fields}
+
+Fields are distributed mesh data structures. They combine value type, dimension, mesh, layout, and execution space into a single object that supports assignment, expressions, reductions, halo exchange, and boundary conditions.
+
+## Main classes
+
+| Class | Role |
+|---|---|
+| `BareField` | Core data container over Kokkos views. |
+| `Field` | User-facing field object with mesh and layout semantics. |
+| `FieldLayout` | Decomposition of a global index domain over MPI ranks. |
+| `SubFieldLayout` | Layout support for subdomains. |
+| `BConds` and `BcTypes` | Boundary condition containers and boundary condition types. |
+| `HaloCells` | Guard cell and halo exchange support. |
+
+## Field anatomy
+
+```{mermaid}
+classDiagram
+  class BareField {
+    +getView()
+    +getHostMirror()
+    +getLayout()
+    +getNghost()
+    +fillHalo()
+    +sum()
+  }
+  class Field {
+    +initialize(mesh, layout, nghost)
+    +updateLayout(layout, nghost)
+    +setFieldBC(bc)
+    +get_mesh()
+    +getVolumeIntegral()
+    +getVolumeAverage()
+    +getFieldBC()
+  }
+  class BConds {
+    +findBCNeighbors(field)
+    +apply(field)
+    +assignGhostToPhysical(field)
+  }
+  class FieldLayout {
+    +getDomain()
+    +getLocalNDIndex()
+    +getNeighbors()
+    +getNeighborsSendRange()
+    +getNeighborsRecvRange()
+  }
+  class UniformCartesian {
+    +getMeshSpacing()
+    +getCellVolume()
+    +getMeshVolume()
+    +getVertexPosition()
+  }
+
+  Field --|> BareField
+  Field --> BConds
+  Field --> FieldLayout
+  Field --> UniformCartesian
+```
+
+## Typical field workflow
+
+1. Define the index domain.
+2. Define the mesh.
+3. Define a field layout over the global domain.
+4. Construct one or more fields with the mesh and layout.
+5. Apply expressions, boundary conditions, reductions, and solver calls.
+
+## Minimal field setup
+
+```cpp
+constexpr unsigned Dim = 3;
+
+using Mesh_t      = ippl::UniformCartesian<double, Dim>;
+using Centering_t = Mesh_t::DefaultCentering;
+using ScalarField = ippl::Field<double, Dim, Mesh_t, Centering_t>;
+using Vector_t    = ippl::Vector<double, Dim>;
+using VectorField = ippl::Field<Vector_t, Dim, Mesh_t, Centering_t>;
+
+ScalarField rho;
+VectorField efield;
+
+rho.initialize(mesh, layout);
+efield.initialize(mesh, layout);
+
+rho = 0.0;
+efield = Vector_t(0.0);
+```
+
+The `Field` template inherits from `BareField` and adds a mesh pointer plus field boundary conditions. The public type aliases in `Field` are useful when writing generic code:
+
+| Alias | Meaning |
+|---|---|
+| `Mesh_t` | Mesh type attached to the field. |
+| `Centering_t` | Centering type. The current `Field` alias resolves to cell centering. |
+| `Layout_t` | `FieldLayout<Dim>`. |
+| `BareField_t` | Underlying data container type. |
+| `view_type` | Kokkos view type used for field storage. |
+| `BConds_t` | Boundary-condition container type for the field. |
+
+The constructor form `ScalarField rho(mesh, layout);` is also used in tests. The default ghost depth is one cell unless a different `nghost` value is supplied to the constructor or `initialize`.
+
+## Accessing data in kernels
+
+The Gaussian Poisson test shows the standard local-to-global mapping inside a field kernel:
+
+```cpp
+auto view       = rho.getView();
+const int nghost = rho.getNghost();
+const auto& ldom = layout.getLocalNDIndex();
+
+Kokkos::parallel_for(
+    "Assign rho field", rho.getFieldRangePolicy(),
+    KOKKOS_LAMBDA(const int i, const int j, const int k) {
+        const int ig = i + ldom[0].first() - nghost;
+        const int jg = j + ldom[1].first() - nghost;
+        const int kg = k + ldom[2].first() - nghost;
+
+        const double x = (ig + 0.5) * hr[0] + origin[0];
+        const double y = (jg + 0.5) * hr[1] + origin[1];
+        const double z = (kg + 0.5) * hr[2] + origin[2];
+
+        view(i, j, k) = gaussian(x, y, z);
+    });
+```
+
+This pattern is worth documenting carefully because it makes three contracts explicit: local indices include ghost cells, `FieldLayout` provides the owned global offset, and cell-centered coordinates use the `0.5` shift.
+
+## Layout and neighbors
+
+`FieldLayout<Dim>` stores:
+
+- the global `NDIndex<Dim>` domain,
+- one local `NDIndex<Dim>` per rank,
+- a boolean decomposition flag for each dimension,
+- neighbor ranks encoded by boundary component,
+- send and receive ranges for halo exchange.
+
+For periodic domains, construct the layout with `isAllPeriodic = true`:
+
+```cpp
+ippl::FieldLayout<Dim> layout(MPI_COMM_WORLD, domain, isParallel, true);
+```
+
+The layout is therefore more than a partition. It is the communication map used by fields and by particle layouts that are coupled to the same mesh.
+
+## Boundary conditions
+
+Current field boundary conditions are stored in `BConds<Field, Dim>`, an array-like container with `2 * Dim` faces. Face numbering follows pairs by dimension:
+
+| Face | Meaning |
+|---|---|
+| `0` | lower face in dimension 0 |
+| `1` | upper face in dimension 0 |
+| `2` | lower face in dimension 1 |
+| `3` | upper face in dimension 1 |
+| `2 * d` | lower face in dimension `d` |
+| `2 * d + 1` | upper face in dimension `d` |
+
+Supported field boundary-condition classes are:
+
+| Class | Behavior |
+|---|---|
+| `PeriodicFace<Field>` | Periodic face exchange. |
+| `NoBcFace<Field>` | No boundary modification. |
+| `ZeroFace<Field>` | Constant zero boundary. |
+| `ConstantFace<Field>` | Constant value boundary. |
+| `ExtrapolateFace<Field>` | Linear extrapolation boundary. |
+
+Only cell-centered field boundary conditions are currently implemented.
+
+Example:
+
+```cpp
+using BConds_t = ippl::BConds<ScalarField, Dim>;
+
+BConds_t bc;
+for (size_t face = 0; face < 2 * Dim; ++face) {
+    bc[face] = std::make_shared<ippl::PeriodicFace<ScalarField>>(face);
+}
+
+rho.setFieldBC(bc);
+```
+
+Mixed boundary conditions are also possible. `test/field/TestFieldBC.cpp` uses periodic faces in the x direction, no boundary condition on the lower y face, a constant value on the upper y face, zero on the lower z face, and extrapolation on the upper z face:
+
+```cpp
+BConds_t bc;
+
+bc[0] = std::make_shared<ippl::PeriodicFace<ScalarField>>(0);
+bc[1] = std::make_shared<ippl::PeriodicFace<ScalarField>>(1);
+bc[2] = std::make_shared<ippl::NoBcFace<ScalarField>>(2);
+bc[3] = std::make_shared<ippl::ConstantFace<ScalarField>>(3, 7.0);
+bc[4] = std::make_shared<ippl::ZeroFace<ScalarField>>(4);
+bc[5] = std::make_shared<ippl::ExtrapolateFace<ScalarField>>(5, 0.0, 1.0);
+
+rho.setFieldBC(bc);
+```
+
+`setFieldBC` stores the container and calls `findBCNeighbors` on the field. Differential operators such as `grad`, `div`, `laplace`, `curl`, and `hess` call `fillHalo()` and apply the field boundary conditions before building the expression object.
+
+## Halo cells
+
+Ghost cells provide local data for stencil operations at subdomain boundaries. A field has a ghost depth `nghost`, available through `getNghost()`. Halo exchange is invoked explicitly with:
+
+```cpp
+rho.fillHalo();
+```
+
+Field operations that require neighbor values call halo filling internally. For custom kernels, users must decide whether the operation reads only owned cells or also reads ghost cells. If the kernel reads stencil neighbors across rank boundaries, call `fillHalo()` and apply boundary conditions first.
+
+## Expressions and reductions
+
+Fields support scalar assignment, field expressions, math functions, and reductions. The unit tests exercise:
+
+| Operation | Example |
+|---|---|
+| scalar assignment | `rho = 1.0;` |
+| deep copy | `auto copy = rho.deepCopy();` |
+| arithmetic | `rho = rho - exact;` |
+| sum | `double q = rho.sum();` |
+| norm | `double err = norm(rho) / norm(exact);` |
+| volume integral | `rho.getVolumeIntegral();` |
+| volume average | `rho.getVolumeAverage();` |
+| gradient | `efield = grad(rho);` |
+| divergence | `rho = div(efield);` |
+| curl | `result = curl(vectorField);` |
+| Hessian | `matrixField = hess(rho);` |
+| Laplacian | `lap = laplace(rho);` |
+
+The differential operators use mesh spacing from `UniformCartesian`. For example, `laplace` builds coefficients from `1 / h_d^2` in each dimension, while `grad` and `div` use centered differences scaled by `0.5 / h_d`.
+
+## Laplacian example
+
+`test/field/TestLaplace.cpp` is the compact example for differential field operators. It builds a periodic scalar field on `[-1, 1]^3`,
+
+\[
+u(x,y,z) = \sin(\pi x)\sin(\pi y)\sin(\pi z),
+\]
+
+then compares `laplace(field)` with
+
+\[
+\nabla^2 u = -3\pi^2 \sin(\pi x)\sin(\pi y)\sin(\pi z).
+\]
+
+The relevant operator call is deliberately simple:
+
+```cpp
+Lap = laplace(field);
+Lap = Lap - Lap_exact;
+Lap = pow(Lap, 2);
+
+double error = sqrt(Lap.sum()) / sqrt(Lap_exact.sum());
+```
+
+Run shape:
+
+```bash
+srun ./TestLaplace <points-per-dimension> <iterations>
+```
+
+This example is a good manual candidate because it touches domain construction, mesh spacing, periodic boundary conditions, local-to-global coordinate conversion, expression assignment, reductions, timing, and explicit `ippl::fence()` calls inside a benchmark loop.
+
+## Sub-layouts
+
+The test suite contains parallel coverage for both full layouts and sub-layouts. The user-level contract is the same: a field is tied to a mesh and a layout, while the layout determines local domains, neighbor relationships, and halo ranges. Sub-layout documentation should be expanded once the `SubFieldLayout` examples are promoted into the manual.
+
+## Documentation tasks
+
+Remaining migration work from the legacy LaTeX manual: older `where` examples, a compact table of mathematical functions supported by expressions, and a side-by-side update of legacy constructor forms to current constructor forms.

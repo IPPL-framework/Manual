@@ -1,0 +1,171 @@
+# Core Concepts {#sec-core-concepts}
+
+IPPL code is parameterized by dimension, value type, memory space, and execution space. This gives user code a compact notation while allowing the library to instantiate high-performance implementations for CPUs and GPUs.
+
+## Concept map
+
+```{mermaid}
+classDiagram
+  class Index {
+    +first()
+    +last()
+    +stride()
+  }
+  class NDIndex {
+    +dimension
+    +operator[]
+  }
+  class UniformCartesian {
+    +spacing
+    +origin
+  }
+  class FieldLayout {
+    +localNDIndex()
+    +globalNDIndex()
+  }
+  class Field {
+    +mesh
+    +layout
+    +view
+  }
+  class ParticleBase {
+    +create()
+    +destroy()
+    +update()
+  }
+
+  NDIndex --> Index
+  FieldLayout --> NDIndex
+  Field --> FieldLayout
+  Field --> UniformCartesian
+  ParticleBase --> FieldLayout
+```
+
+## Design rules
+
+- Use IPPL index and region types to describe domains instead of hand-written loops over global coordinates.
+- Treat `FieldLayout` and particle layout objects as ownership and communication contracts.
+- Prefer field expressions and reductions over manual host-side copies.
+- Make execution-space behavior explicit when adding new APIs.
+- Keep Doxygen comments close to the public interface; the manual should explain usage and design intent.
+
+## Domain construction pattern
+
+Most examples follow the same domain construction pattern:
+
+```cpp
+constexpr unsigned Dim = 3;
+
+ippl::Vector<int, Dim> nr = {64, 64, 64};
+
+ippl::NDIndex<Dim> domain;
+for (unsigned d = 0; d < Dim; ++d) {
+    domain[d] = ippl::Index(nr[d]);
+}
+
+std::array<bool, Dim> isParallel;
+isParallel.fill(true);
+
+ippl::Vector<double, Dim> hr     = {1.0 / nr[0], 1.0 / nr[1], 1.0 / nr[2]};
+ippl::Vector<double, Dim> origin = {0.0, 0.0, 0.0};
+
+using Mesh_t = ippl::UniformCartesian<double, Dim>;
+Mesh_t mesh(domain, hr, origin);
+
+ippl::FieldLayout<Dim> layout(MPI_COMM_WORLD, domain, isParallel);
+```
+
+The same `domain`, `mesh`, and `layout` then become the shared coordinate system for fields, particle layouts, and solvers.
+
+## `Index`
+
+`ippl::Index` represents a one-dimensional strided integer range. It is used both to build global domains and to express subranges. Current constructors are:
+
+| Constructor | Meaning |
+|---|---|
+| `Index()` | Empty range. |
+| `Index(n)` | Range `[0, n - 1]`. The argument is a length, not an upper bound. |
+| `Index(first, last)` | Inclusive range `[first, last]` with stride `1`. |
+| `Index(first, last, stride)` | Inclusive strided range. |
+
+Examples:
+
+```cpp
+ippl::Index all(10);       // 0, 1, ..., 9
+ippl::Index high(5, 9);    // 5, 6, ..., 9
+ippl::Index odd(1, 9, 2);  // 1, 3, 5, 7, 9
+```
+
+Useful accessors are `first()`, `last()`, `min()`, `max()`, `length()`, `stride()`, and `empty()`. `Index` also supports range arithmetic such as `I + 1`, `I - 1`, `2 * I`, and `I / 2`, plus geometric operations such as `intersect`, `grow`, `touches`, `contains`, and `split`.
+
+## `NDIndex`
+
+`ippl::NDIndex<Dim>` is a fixed-size container of `Dim` `Index` objects. It describes a rectangular domain in index space.
+
+```cpp
+ippl::NDIndex<3> domain;
+domain[0] = ippl::Index(64);
+domain[1] = ippl::Index(64);
+domain[2] = ippl::Index(128);
+```
+
+Like `Index`, it supports `intersect`, `grow`, `touches`, `contains`, `split`, `length`, `first`, and `last`. Layout, mesh, field, particle, and solver code all use this object as the shared description of the discrete domain.
+
+## Mesh and layout
+
+`UniformCartesian<T, Dim>` adds geometry to an `NDIndex`: mesh spacing, origin, cell volume, and mesh volume.
+
+```cpp
+ippl::Vector<double, Dim> hx     = {dx, dy, dz};
+ippl::Vector<double, Dim> origin = {0.0, 0.0, 0.0};
+ippl::UniformCartesian<double, Dim> mesh(domain, hx, origin);
+```
+
+`FieldLayout<Dim>` adds ownership and communication information to the same domain:
+
+```cpp
+std::array<bool, Dim> isParallel;
+isParallel.fill(true);
+
+ippl::FieldLayout<Dim> layout(MPI_COMM_WORLD, domain, isParallel);
+```
+
+Each boolean in `isParallel` tells the partitioner whether that axis may be decomposed. At least one axis must be parallel in distributed runs. Pass `true` as the final constructor argument when all field boundaries are periodic:
+
+```cpp
+ippl::FieldLayout<Dim> periodicLayout(MPI_COMM_WORLD, domain, isParallel, true);
+```
+
+```{mermaid}
+flowchart LR
+  Index0["Index x"]
+  Index1["Index y"]
+  Index2["Index z"]
+  Domain["NDIndex<Dim>"]
+  Mesh["UniformCartesian<T, Dim>"]
+  Layout["FieldLayout<Dim>"]
+  Field["Field<T, Dim, Mesh, Centering>"]
+
+  Index0 --> Domain
+  Index1 --> Domain
+  Index2 --> Domain
+  Domain --> Mesh
+  Domain --> Layout
+  Mesh --> Field
+  Layout --> Field
+```
+
+## `ParameterList`
+
+Solver and backend options are commonly passed through `ippl::ParameterList`. The allowed value types are `double`, `float`, `bool`, `std::string`, `unsigned int`, `int`, and nested `ParameterList`.
+
+```cpp
+ippl::ParameterList params;
+params.add("use_pencils", true);
+params.add("use_reorder", false);
+params.add("use_gpu_aware", true);
+
+bool gpuAware = params.get<bool>("use_gpu_aware");
+```
+
+`add` rejects duplicate keys. `get` without a default throws if the key is missing, while `get(key, defaultValue)` returns the default for absent keys.

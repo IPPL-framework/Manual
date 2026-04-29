@@ -1,0 +1,67 @@
+name: Publish Manual
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out manual source
+        uses: actions/checkout@v4
+
+      - name: Check out IPPL source
+        uses: actions/checkout@v4
+        with:
+          repository: IPPL-framework/ippl
+          path: ippl-src
+
+      - name: Set up Pages
+        uses: actions/configure-pages@v5
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+
+      - name: Render manual
+        run: quarto render . --to html
+
+      - name: Render API reference
+        run: doxygen Doxyfile.api
+        env:
+          IPPL_SOURCE_DIR: ${{ github.workspace }}/ippl-src
+
+      - name: Disable Jekyll
+        run: touch docs/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

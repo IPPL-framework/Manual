@@ -1,0 +1,133 @@
+# Particle-Mesh Methods {#sec-particle-mesh}
+
+Particle-mesh workflows combine distributed particles, distributed fields, interpolation, and solvers. The core cycle is common across plasma, accelerator, and astrophysical applications.
+
+```{mermaid}
+flowchart LR
+  Push["Advance particles"]
+  Migrate["Update particle layout"]
+  Deposit["Scatter/deposit to mesh"]
+  Solve["Solve field equation"]
+  Gather["Gather field to particles"]
+
+  Push --> Migrate --> Deposit --> Solve --> Gather --> Push
+```
+
+## Core operations
+
+| Operation | IPPL area |
+|---|---|
+| Particle advance | User container or manager code |
+| Particle migration | `ParticleSpatialLayout`, overlap layout |
+| Deposit/scatter | `CIC`, particle-field interaction |
+| Field solve | Poisson, Maxwell, FFT, FEM solvers |
+| Gather | `CIC`, field interpolation to particle positions |
+
+## CIC interface
+
+Cloud-in-cell interpolation currently appears as global gather/scatter functions. The implementation scatters to or gathers from `2^Dim` neighboring mesh points. In 2D, for example, the contributing points are `(i, j)`, `(i - 1, j)`, `(i, j - 1)`, and `(i - 1, j - 1)`.
+
+The PIC test uses the interface directly:
+
+```cpp
+scatter(qm, rho, this->R);
+gather(this->E, efield, this->R);
+```
+
+The first call deposits a particle attribute onto a scalar mesh field. The second interpolates a vector field back to particle positions.
+
+## CIC weights and conservation
+
+For each particle, CIC computes lower and upper interpolation weights in every dimension. Scatter uses atomic adds into the field:
+
+```cpp
+Kokkos::atomic_add(&field(...), particleValue * weightProduct);
+```
+
+Gather computes the weighted sum of the same neighboring mesh points. The particle gather/scatter tests document three important contracts:
+
+| Test behavior | Contract |
+|---|---|
+| gather from constant field | interpolation of a constant field returns that constant. |
+| gather with `addToAttribute = true` | gathered values can either replace or increment an attribute. |
+| scatter all particles | total field charge equals total particle charge. |
+| scatter with custom range | a subset of local particles can be deposited. |
+| scatter with custom hash | particles can be deposited through a remapped index list. |
+
+Typical calls:
+
+```cpp
+field = 0.0;
+scatter(bunch.Q, field, bunch.R);
+double totalField = field.sum();
+double totalParticles = bunch.Q.sum();
+
+gather(bunch.Q, field, bunch.R);
+gather(bunch.Q, field, bunch.R, true); // add to current attribute
+```
+
+## PIC test loop
+
+The `PICnd` test exercises the following end-to-end sequence:
+
+1. Construct `NDIndex`, `UniformCartesian`, `FieldLayout`, and `ParticleSpatialLayout`.
+2. Create a derived `ParticleBase` container and register particle attributes.
+3. Initialize particle positions and attributes.
+4. Call `update()` to migrate particles to owning ranks.
+5. Deposit particle charge with `scatter`.
+6. Initialize a static electric field.
+7. Gather the electric field at particle locations with `gather`.
+8. Advance particle velocity and position.
+9. Repeat migration and conservation checks.
+
+The time loop in `PICnd` has the canonical PIC shape:
+
+```cpp
+P->R = P->R + dt * P->P;
+P->update();
+
+P->scatterCIC(totalP, it + 1);
+P->gatherCIC();
+
+P->P = P->P + dt * P->qm * P->E;
+```
+
+`scatterCIC` resets the mesh field, deposits charge, reduces the total particle count, and checks charge conservation:
+
+```cpp
+EFDMag_m = 0.0;
+scatter(qm, EFDMag_m, this->R);
+
+double Q_grid = EFDMag_m.sum();
+ippl::Comm->reduce(&local_particles, &Total_particles, 1, std::plus<unsigned int>());
+```
+
+This is the right level of example for user documentation because it uses IPPL abstractions without hiding the data movement.
+
+Its default command shape is:
+
+```bash
+srun ./PICnd 128 128 128 10000 10 --info 10
+```
+
+where the first three arguments are grid sizes, followed by total particle count and number of time steps.
+
+## Load balancing hook
+
+`PICnd` also shows a first load-balancing pattern. It initializes an `OrthogonalRecursiveBisection` object from the field layout, mesh, and field magnitude, then optionally repartitions:
+
+```cpp
+orb.initialize(fl, mesh, EFDMag_m);
+bool changed = orb.binaryRepartition(this->R, fl, fromAnalyticDensity);
+if (changed) {
+    this->updateLayout(fl, mesh);
+}
+```
+
+The important user contract is that field layouts, local fields, and particle layouts must be updated together after repartitioning.
+
+## First examples to document
+
+- `test/particle/PICnd.cpp` for a compact PIC test.
+- `alpine/LandauDamping.cpp` and ALPINE managers for production-style mini-apps.
+- `examples/collisions/P3MHeating.cpp` for P3M-style coupling.

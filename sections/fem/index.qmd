@@ -1,0 +1,111 @@
+# Finite Elements {#sec-fem}
+
+The FEM layer provides structured finite-element spaces, elements, quadrature, interpolation, vector storage, assembly operations, and FEM-based solvers.
+
+```{mermaid}
+classDiagram
+  class FiniteElementSpace {
+    +numElements()
+    +numGlobalDOFs()
+    +getLocalDOFIndices()
+    +getGlobalDOFIndices()
+  }
+  class LagrangeSpace {
+    +evaluateAx()
+    +evaluateLoadVector()
+    +evaluateLumpedMass()
+    +computeErrorL2()
+  }
+  class NedelecSpace {
+    +evaluateAx()
+    +evaluateLoadVector()
+    +createFEMVector()
+    +reconstructToPoints()
+  }
+  class FEMVector
+  class Element
+  class Quadrature
+  FiniteElementSpace <|-- LagrangeSpace
+  FiniteElementSpace <|-- NedelecSpace
+  FiniteElementSpace --> Element
+  FiniteElementSpace --> Quadrature
+  LagrangeSpace --> FEMVector
+  NedelecSpace --> FEMVector
+```
+
+## Main classes
+
+| Class | Role |
+|---|---|
+| `FiniteElementSpace` | Common finite-element space base for structured rectilinear meshes, element indexing, and DOF mapping. |
+| `LagrangeSpace` | Nodal Lagrange finite-element space for scalar fields. |
+| `NedelecSpace` | Edge-oriented Nedelec finite-element space for vector fields and curl-curl operators. |
+| `FEMVector` | FEM vector storage and conversion layer. |
+| `FEMInterpolate` | Interpolation helper functionality. |
+| `QuadrilateralElement`, `HexahedralElement`, `EdgeElement` | Element definitions. |
+
+## Space construction
+
+A finite-element calculation starts from the same distributed mesh concepts used by fields: a mesh, a domain, and a layout. The FEM space adds an element, a reference element, and a quadrature rule. The space is then responsible for mapping mesh vertices to elements, local DOFs to global DOFs, and element-local data to device kernels.
+
+```{mermaid}
+flowchart LR
+  Mesh["Uniform Cartesian mesh"] --> Layout["FieldLayout"]
+  Layout --> Space["FiniteElementSpace"]
+  Element["Element type"] --> Space
+  Quad["Quadrature rule"] --> Space
+  Space --> Assembly["evaluateAx / load vector"]
+  Space --> Error["error and reconstruction"]
+```
+
+The common base provides the indexing vocabulary:
+
+| Method family | Meaning |
+|---|---|
+| `numElements`, `getElementNDIndex` | Element counts and element-domain indexing. |
+| `getMeshVertexNDIndex`, `getElementMeshVertexIndices` | Relationship between mesh vertices and element vertices. |
+| `numGlobalDOFs`, `getLocalDOFIndex`, `getGlobalDOFIndex` | Scalar local/global DOF queries. |
+| `getLocalDOFIndices`, `getGlobalDOFIndices` | Element-wise DOF index arrays used in assembly. |
+
+## Lagrange spaces
+
+`LagrangeSpace` represents structured-grid nodal Lagrange elements. The number of element DOFs is computed as `(Order + 1)^Dim`. The class exposes the pieces a user expects for elliptic and diffusion-like problems:
+
+| Capability | Use |
+|---|---|
+| Basis and gradient evaluation | Evaluate shape functions and derivatives at quadrature points. |
+| `evaluateAx` | Apply an assembled operator action without exposing the full matrix. |
+| `evaluateLoadVector` | Assemble a right-hand-side vector from a source function. |
+| `evaluateLumpedMass` | Build lumped mass data for explicit or preconditioned workflows. |
+| `computeErrorL2`, `computeAvg` | Measure convergence against analytic fields or averages. |
+| `updateLayout` | Rebuild layout-dependent data after distribution changes. |
+
+## Nedelec spaces
+
+`NedelecSpace` provides vector-valued edge DOFs for Maxwell-type curl-curl operators. The current implementation computes the number of element DOFs as `Dim * 2^(Dim - 1)`.
+
+| Capability | Use |
+|---|---|
+| Shape and curl evaluation | Evaluate vector basis functions and their curls. |
+| `getFEMVectorDOFIndices` | Map FEM vector entries to local element DOFs. |
+| `evaluateAx` | Apply curl-curl plus mass-like operators. |
+| `evaluateLoadVector`, `evaluateLoadVectorFunctor` | Build source vectors from functions or functors. |
+| `createFEMVector` | Construct storage compatible with the distributed FEM space. |
+| `reconstructToPoints` | Reconstruct vector fields at physical points. |
+| Boundary DOF queries | Identify DOFs affected by boundary conditions. |
+
+## Tests to document first
+
+| Test family | Manual purpose |
+|---|---|
+| `unit_tests/FEM/FiniteElementSpace.cpp` | Validate element indexing and local/global DOF mapping. |
+| `unit_tests/FEM/LagrangeSpace.cpp` | Validate scalar basis functions, assembly, and reconstruction. |
+| `unit_tests/FEM/NedelecSpace.cpp` | Validate edge basis functions, curls, and vector DOF mapping. |
+| `test/solver/fem/TestZeroBC_sin*` | Show homogeneous Dirichlet Poisson-style verification. |
+| `test/solver/fem/TestPeriodicBC_sinsin*` | Show periodic finite-element verification. |
+| `test/solver/fem/TestNonhomDirichlet_*` | Show non-homogeneous boundary treatment. |
+| `test/solver/fem/TestMaxwellDiffusion*` | Show Nedelec-based Maxwell diffusion verification. |
+
+## Developer focus
+
+FEM documentation should be unusually explicit about local-to-global degree-of-freedom mapping, boundary handling, assembly contracts, and which code runs in device contexts.

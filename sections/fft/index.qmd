@@ -1,0 +1,108 @@
+# FFT {#sec-fft}
+
+The IPPL `FFT` layer wraps scalable transforms and uses HeFFTe as the distributed backend. FFT support is optional at configure time and should be enabled with `IPPL_ENABLE_FFT=ON`.
+
+## Transform types
+
+| Transform tag | Field type | Meaning |
+|---|---|---|
+| `CCTransform` | complex field | complex-to-complex, in-place. |
+| `RCTransform` | real input, complex output | real-to-complex and complex-to-real. |
+| `SineTransform` | real field | in-place sine transform. |
+| `CosTransform` | real field | in-place cosine transform. |
+| `Cos1Transform` | real field | in-place cosine type-I transform. |
+
+`TransformDirection` is either `FORWARD` or `BACKWARD`.
+
+## Backend selection
+
+The FFT wrapper selects a HeFFTe backend from the field memory space and the configured HeFFTe features:
+
+| Memory/backend condition | HeFFTe backend family |
+|---|---|
+| host with FFTW | `fftw`, `fftw_sin`, `fftw_cos`, `fftw_cos1` |
+| host with MKL | `mkl`, `mkl_sin`, `mkl_cos` |
+| CUDA space | `cufft`, `cufft_sin`, `cufft_cos`, `cufft_cos1` |
+| HIP space with ROCm | `rocfft`, `rocfft_sin`, `rocfft_cos`, `rocfft_cos1` |
+| fallback host/HIP | HeFFTe stock backends |
+
+The wrapper copies owned field data without ghost layers into temporary LayoutLeft Kokkos views before calling HeFFTe. This is because HeFFTe operates on local boxes without IPPL ghost cells.
+
+## HeFFTe parameters
+
+FFT and FFT-based solver examples use `ParameterList` keys:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `use_heffte_defaults` | `bool` | Use HeFFTe defaults instead of explicit IPPL options. |
+| `use_pencils` | `bool` | Select pencil decomposition when explicit options are used. |
+| `use_reorder` | `bool` | Enable/disable HeFFTe reorder option. |
+| `use_gpu_aware` | `bool` | Request GPU-aware communication when supported. |
+| `comm` | `int` | Communication algorithm: `a2a`, `a2av`, `p2p`, or `p2p_pl`. |
+| `r2c_direction` | `int` | Shortened dimension for real-to-complex transforms. |
+
+The `comm` enum maps to HeFFTe reshape algorithms:
+
+| IPPL enum | HeFFTe algorithm |
+|---|---|
+| `a2a` | all-to-all |
+| `a2av` | all-to-all-v |
+| `p2p` | point-to-point |
+| `p2p_pl` | pipelined point-to-point |
+
+## Complex-to-complex example
+
+`test/FFT/TestFFTCC.cpp` creates a complex field, applies forward and backward transforms, and checks the recovered field.
+
+```cpp
+using Field_t = ippl::Field<Kokkos::complex<double>, 3, Mesh_t, Centering_t>;
+using FFT_t   = ippl::FFT<ippl::CCTransform, Field_t>;
+
+ippl::ParameterList params;
+params.add("use_heffte_defaults", true);
+
+FFT_t fft(layout, params);
+fft.transform(ippl::FORWARD, field);
+fft.transform(ippl::BACKWARD, field);
+```
+
+## Real-to-complex example
+
+`test/FFT/TestFFTRC.cpp` uses separate input and output layouts because the complex output is shortened in one dimension.
+
+```cpp
+ippl::ParameterList params;
+params.add("use_heffte_defaults", true);
+params.add("r2c_direction", 0);
+
+using FFT_t = ippl::FFT<ippl::RCTransform, RealField>;
+FFT_t fft(layoutInput, layoutOutput, params);
+
+fft.transform(ippl::FORWARD, realField, complexField);
+fft.transform(ippl::BACKWARD, realField, complexField);
+```
+
+If `r2c_direction == 0`, the output domain length in dimension 0 is `N0 / 2 + 1`. The analogous rule applies for directions 1 and 2.
+
+## Sine and cosine examples
+
+Sine, cosine, and cosine type-I transforms are in-place real-field transforms. `test/FFT/TestSine.cpp` demonstrates explicit parameters:
+
+```cpp
+params.add("use_heffte_defaults", false);
+params.add("use_pencils", true);
+params.add("use_reorder", false);
+params.add("use_gpu_aware", true);
+params.add("comm", ippl::p2p_pl);
+
+using FFT_t = ippl::FFT<ippl::SineTransform, Field_t>;
+FFT_t fft(layout, params);
+fft.transform(ippl::FORWARD, field);
+fft.transform(ippl::BACKWARD, field);
+```
+
+## User guidance
+
+FFT-heavy applications should choose decompositions and grid sizes with the communication pattern in mind. For GPU runs, the build must align Kokkos, HeFFTe, MPI, and the device runtime.
+
+HeFFTe currently supports the IPPL transform path for 2D and 3D fields. For real-to-complex transforms, users must create compatible input and output domains. For all transforms, IPPL fields may have ghost cells, but the FFT operates on the owned region.

@@ -1,0 +1,214 @@
+# Particles {#sec-particles}
+
+Particle support centers on containers with named attributes and layouts that determine ownership, spatial locality, and migration. This is the Lagrangian half of IPPL's particle-mesh model.
+
+## Main classes
+
+| Class | Role |
+|---|---|
+| `ParticleBase` | Base class for user particle containers. |
+| `ParticleAttrib` | Typed particle attribute stored in a Kokkos view. |
+| `ParticleAttribBase` | Common attribute interface used by the container. |
+| `ParticleLayout` | Base layout interface. |
+| `ParticleSpatialLayout` | Spatial decomposition and migration. |
+| `ParticleSpatialOverlapLayout` | Spatial layout with overlap regions. |
+| `ParticleBC` | Particle boundary condition support. |
+
+## Particle anatomy
+
+```{mermaid}
+classDiagram
+  class ParticleBase {
+    +R
+    +ID
+    +create(nLocal)
+    +globalCreate(nTotal)
+    +destroy(invalid, destroyNum)
+    +update()
+    +addAttribute(attribute)
+    +forAllAttributes(functor)
+    +getLocalNum()
+    +getTotalNum()
+  }
+  class ParticleAttrib {
+    +getView()
+    +getHostMirror()
+    +create(n)
+    +destroy(...)
+    +scatter(field, positions, policy, hash)
+    +gather(field, positions, addToAttribute)
+    +sum()
+    +min()
+    +max()
+    +prod()
+  }
+  class ParticleLayout {
+    +setParticleBC(bc)
+    +applyBC(R, region)
+  }
+  class ParticleSpatialLayout {
+    +update(container)
+    +updateLayout(fieldLayout, mesh)
+    +locateParticles(...)
+    +getRegionLayout()
+  }
+
+  ParticleSpatialLayout --|> ParticleLayout
+  ParticleBase --> ParticleSpatialLayout
+  ParticleBase --> ParticleAttrib
+```
+
+## User model
+
+A user defines a particle container by deriving from `ParticleBase` and adding attributes such as position, velocity, mass, charge, or application-specific state. The layout determines which MPI rank owns each particle and how particles move when positions change.
+
+The source-level contract is explicit:
+
+- `R` stores particle positions.
+- `ID` stores particle IDs when IDs are enabled.
+- user attributes are registered with `addAttribute`.
+- `getLocalNum()` returns the rank-local particle count.
+- `getTotalNum()` returns the global particle count.
+- `update()` asks the layout to migrate particles after positions change.
+
+`ParticleBase` automatically registers the inherited position attribute `R`. If particle IDs are enabled through the `IDProperties` template parameter, it also registers `ID`. User attributes must be registered in the derived class constructor with `addAttribute`.
+
+## Minimal derived container
+
+```cpp
+template <class PLayout>
+class ChargedParticles : public ippl::ParticleBase<PLayout> {
+public:
+    using Base = ippl::ParticleBase<PLayout>;
+    using Vector_t = typename PLayout::vector_type;
+
+    ippl::ParticleAttrib<double> qm;
+    typename Base::particle_position_type P;
+    typename Base::particle_position_type E;
+
+    ChargedParticles(PLayout& layout)
+        : Base(layout) {
+        this->addAttribute(qm);
+        this->addAttribute(P);
+        this->addAttribute(E);
+        this->setParticleBC(ippl::BC::PERIODIC);
+    }
+};
+```
+
+This is the same pattern used by `test/particle/PICnd.cpp`: charge-to-mass ratio, velocity, and gathered electric field are particle attributes; the inherited `R` position attribute drives migration and interpolation.
+
+## Attribute storage and expressions
+
+`ParticleAttrib<T, Properties...>` stores one value per local particle in a Kokkos view. Common types include scalar attributes such as charge and vector attributes such as velocity:
+
+```cpp
+ippl::ParticleAttrib<double> q;
+typename Base::particle_position_type velocity;
+```
+
+Useful operations:
+
+| Operation | Example |
+|---|---|
+| scalar assignment | `bunch.qm = totalCharge / totalParticles;` |
+| expression assignment | `bunch.P = bunch.P + dt * bunch.qm * bunch.E;` |
+| device view access | `auto view = bunch.qm.getView();` |
+| host mirror | `auto host = bunch.R.getHostMirror();` |
+| reduction | `double total = bunch.qm.sum();` |
+| field deposit | `scatter(bunch.qm, rho, bunch.R);` |
+| field gather | `gather(bunch.E, efield, bunch.R);` |
+
+Host-side initialization should use a host mirror followed by `Kokkos::deep_copy`:
+
+```cpp
+auto R_host = bunch.R.getHostMirror();
+for (size_t i = 0; i < bunch.getLocalNum(); ++i) {
+    R_host(i) = initialPosition(i);
+}
+Kokkos::deep_copy(bunch.R.getView(), R_host);
+```
+
+## Creation and initialization
+
+```cpp
+using PLayout_t = ippl::ParticleSpatialLayout<double, Dim>;
+
+PLayout_t particleLayout(fieldLayout, mesh);
+ChargedParticles<PLayout_t> bunch(particleLayout);
+
+const unsigned nloc = totalParticles / ippl::Comm->size();
+bunch.create(nloc);
+bunch.qm = totalCharge / totalParticles;
+bunch.P  = 0.0;
+bunch.update();
+```
+
+After host-side initialization of positions, copy the host mirror back to the device view with `Kokkos::deep_copy`. Then call `update()` so the layout can enforce ownership and communication invariants.
+
+`create(nLocal)`, `globalCreate(nTotal)`, `createWithID(id)`, `destroy(invalid, destroyNum)`, and `update()` are collective operations. Every MPI rank must call them in the same control-flow context.
+
+## Particle boundary conditions
+
+Particle boundary conditions are selected with the `ippl::BC` enum:
+
+| BC | Behavior |
+|---|---|
+| `PERIODIC` | Wraps coordinates back into the domain. |
+| `REFLECTIVE` | Mirrors coordinates back into the domain. |
+| `SINK` | Clips coordinates to the boundary. |
+| `NO` | Leaves coordinates unchanged. |
+
+Use one boundary condition on all faces:
+
+```cpp
+bunch.setParticleBC(ippl::BC::PERIODIC);
+```
+
+or provide one value per face:
+
+```cpp
+typename Bunch::bc_container_type bcs;
+bcs.fill(ippl::BC::PERIODIC);
+bunch.setParticleBC(bcs);
+```
+
+The spatial layout applies particle boundary conditions at the start of `update()`, before migration. Unit tests cover upper and lower faces for periodic, reflective, sink, and no-boundary behavior.
+
+## Spatial migration
+
+`ParticleSpatialLayout` maps particle positions to rank-owned spatial regions derived from a `FieldLayout` and a mesh. The update algorithm is:
+
+1. Apply particle boundary conditions to `R`.
+2. Locate each particle in the current rank, neighboring ranks, or the global region list.
+3. Count sends per destination rank.
+4. Pack and send particles that left the current rank.
+5. Delete invalid local particles.
+6. Receive incoming particles and unpack all registered attributes.
+
+```{mermaid}
+flowchart LR
+  R["Updated positions R"]
+  BC["applyBC"]
+  Locate["locateParticles"]
+  Pack["pack/send"]
+  Delete["internalDestroy"]
+  Recv["recv/unpack"]
+  Valid["Rank-local valid particles"]
+
+  R --> BC --> Locate --> Pack --> Delete --> Recv --> Valid
+```
+
+The `ParticleSendRecv` unit test verifies the core invariant after migration: every remaining local particle has an expected rank equal to `ippl::Comm->rank()`, and the global particle count is conserved.
+
+## Developer model
+
+Particle data movement is a correctness-critical layer. Changes to particle layouts must be documented with:
+
+- ownership invariant,
+- migration trigger,
+- communication pattern,
+- memory-space assumptions,
+- unit tests covering multiple dimensions and execution spaces.
+
+The test suite instantiates particle tests across precision, dimensions, and execution spaces. When adding a particle feature, prefer tests that cover both host and device memory-space paths and more than one dimension.

@@ -1,0 +1,93 @@
+# Maxwell Solvers {#sec-maxwell-solvers}
+
+Maxwell solver support covers finite-difference time-domain and finite-element diffusion-oriented formulations.
+
+```{mermaid}
+classDiagram
+  class Maxwell
+  class FDTDSolverBase {
+    +solve()
+    +timeShift()
+    +evaluate_EB()
+    +applyBCs()
+  }
+  class StandardFDTDSolver {
+    +step()
+    +initialize()
+  }
+  class NonStandardFDTDSolver {
+    +step()
+    +initialize()
+  }
+  class FEMMaxwellDiffusionSolver {
+    +solve()
+    +getIterationCount()
+    +getResidue()
+    +reconstructToPoints()
+  }
+  Maxwell <|-- FDTDSolverBase
+  FDTDSolverBase <|-- StandardFDTDSolver
+  FDTDSolverBase <|-- NonStandardFDTDSolver
+  Maxwell <|-- FEMMaxwellDiffusionSolver
+```
+
+## Main classes
+
+| Class | Role |
+|---|---|
+| `FDTDSolverBase` | Base class for FDTD solvers, field history, time step, and boundary handling. |
+| `StandardFDTDSolver` | Standard FDTD implementation. |
+| `NonStandardFDTDSolver` | Non-standard FDTD implementation with nondispersive coefficients. |
+| `AbsorbingBC` | Absorbing boundary support. |
+| `FEMMaxwellDiffusionSolver` | Nedelec FEM solver for Maxwell diffusion problems. |
+| `Maxwell` | Shared Maxwell solver definitions. |
+
+## FDTD solver lifecycle
+
+`FDTDSolverBase` stores the electromagnetic source, electric and magnetic fields, the vector-potential time history `A_nm1`, `A_n`, and `A_np1`, plus the mesh, layout, domain, grid spacing, and time step. Concrete solvers implement `initialize()` and `step()`.
+
+```{mermaid}
+flowchart TD
+  Init["initialize()"] --> Solve["solve()"]
+  Solve --> Step["step()"]
+  Step --> BC["applyBCs()"]
+  BC --> Eval["evaluate_EB()"]
+  Eval --> Shift["timeShift()"]
+  Shift --> Step
+```
+
+The boundary-condition enum currently exposes:
+
+| Boundary condition | Meaning |
+|---|---|
+| `fdtd_bc::periodic` | Periodic electromagnetic boundary. |
+| `fdtd_bc::absorbing` | Absorbing boundary treatment. |
+
+Manual examples should state the field layout, grid spacing, time step, source convention, and boundary tuple explicitly before showing solver construction.
+
+## Standard and non-standard FDTD
+
+`StandardFDTDSolver` is the baseline time-domain solver. It is the right starting point for users who want the canonical FDTD setup and for developers who need to compare changes against a simple reference implementation.
+
+`NonStandardFDTDSolver` adds nondispersive coefficients `a1`, `a2`, `a4`, `a6`, and `a8`. The source mentions Taflove-style FDTD references and MITHRA 2.0; the manual should keep the numerical derivation brief and link to the implementation and publications for details.
+
+## FEM Maxwell diffusion
+
+`FEMMaxwellDiffusionSolver` solves the model problem
+
+$$
+\nabla \times \nabla \times E + E = f,
+\qquad n \times E = 0.
+$$
+
+It uses `NedelecSpace`, `FEMVector`, and a preconditioned conjugate-gradient solve. The default parameter values are `max_iterations = 10` and `tolerance = 1e-13`, and users can query `getIterationCount()` and `getResidue()` after a solve. The class also provides `reconstructToPoints()` and `getL2Error()` for verification workflows.
+
+## Tests to document first
+
+This chapter should state field staggering, boundary condition conventions, stability constraints, and the exact assumptions used in the convergence tests under `test/maxwell`.
+
+| Test area | Manual purpose |
+|---|---|
+| FDTD tests under `test/maxwell` | Show source-field setup, time stepping, and boundary behavior. |
+| `test/solver/fem/TestMaxwellDiffusion*` | Show Nedelec FEM setup, solver parameters, and convergence checks. |
+| Unit tests for `NedelecSpace` | Validate the basis and curl operations used by FEM Maxwell diffusion. |

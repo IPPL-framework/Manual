@@ -1,0 +1,48 @@
+project:
+  type: book
+  output-dir: docs
+
+book:
+  title: "IPPL Manual"
+  subtitle: "Independent Parallel Particle Layer"
+  description: "User and developer manual for the IPPL C++ particle and field library."
+  site-url: "https://IPPL-framework.github.io/Manual/"
+  repo-url: "https://github.com/IPPL-framework/Manual"
+  repo-branch: main
+  repo-actions: [edit, issue]
+  favicon: figures/ippl-logo.png
+  chapters:
+    - index.qmd
+    - sections/overview/index.qmd
+    - sections/getting-started/index.qmd
+    - sections/core-concepts/index.qmd
+    - sections/fields/index.qmd
+    - sections/particles/index.qmd
+    - sections/particle-mesh/index.qmd
+    - sections/fft/index.qmd
+    - sections/poisson-solvers/index.qmd
+    - sections/maxwell-solvers/index.qmd
+    - sections/fem/index.qmd
+    - sections/communication/index.qmd
+    - sections/performance-portability/index.qmd
+    - sections/examples/index.qmd
+    - sections/developer-guide/index.qmd
+    - sections/api-reference/index.qmd
+    - sections/literature/index.qmd
+
+number-sections: true
+number-depth: 3
+
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    html-math-method: mathjax
+    code-fold: false
+    theme:
+      - cosmo
+      - includes/styles.css
+
+bibliography: references.bib
+csl: csl/ieee.csl

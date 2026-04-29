@@ -1,0 +1,69 @@
+# Communication {#sec-communication}
+
+The communication layer wraps MPI concepts used throughout fields, particles, layouts, and solvers. Most users interact with it indirectly through layouts and high-level operations, but developers need the details.
+
+```{mermaid}
+flowchart LR
+  Env["Environment"] --> Comm["Communicator"]
+  Comm --> P2P["send/recv/isend/irecv"]
+  Comm --> Coll["collectives"]
+  Comm --> Buffers["buffers"]
+  Buffers --> Archive["Archive"]
+  Archive --> Particles["particle migration"]
+  Comm --> Layouts["field and particle layouts"]
+```
+
+## Main classes
+
+| Component | Role |
+|---|---|
+| `Communicator` | MPI communicator wrapper and main communication facade. |
+| `Environment` | MPI initialization, finalization, and abort lifecycle. |
+| `Collectives` | Collective communication helpers. |
+| `PointToPoint`, `Request`, `Status`, `Wait` | Nonblocking and blocking point-to-point operations. |
+| `Window` | MPI window support. |
+| `Archive`, `Serializable` | Serialization infrastructure. |
+| `BufferHandler`, `LoggingBufferHandler` | Communication buffer management. |
+
+## Runtime lifecycle
+
+IPPL applications initialize the runtime before constructing distributed objects. `Environment` wraps MPI initialization and finalization and exposes `initialized()`, `finalized()`, and `abort()` checks. `Communicator` then supplies rank, size, barriers, communicator splitting, point-to-point operations, collective operations, and communication buffers.
+
+## Communicator operations
+
+| Operation family | Typical use |
+|---|---|
+| `size`, `rank`, `barrier`, `abort` | Runtime coordination and diagnostics. |
+| `send`, `recv`, `probe` | Blocking point-to-point exchanges. |
+| `isend`, `irecv`, `iprobe` | Overlapped exchange and migration workflows. |
+| `gather`, `scatter`, `reduce`, `allreduce` | Global reductions, diagnostics, and distributed setup. |
+| `split` | Subcommunicators for solver or layout decomposition. |
+| `getBuffer`, `freeBuffer`, `freeAllBuffers`, `deleteAllBuffers` | Managed send/receive storage. |
+
+## Serialization and particle migration
+
+`Archive` provides the byte-level serialization used when particles move between ranks. It stores data in Kokkos character views and supports particle attribute packing and unpacking, including vector-valued attributes. The particle migration path depends on this invariant: positions and all registered attributes must be packed, sent, unpacked, and reinserted without changing the global particle count.
+
+```{mermaid}
+sequenceDiagram
+  participant Layout as ParticleSpatialLayout
+  participant Archive as Archive
+  participant Comm as Communicator
+  participant Rank as Destination rank
+  Layout->>Archive: pack departing particles
+  Archive->>Comm: provide byte buffers
+  Comm->>Rank: exchange buffers
+  Rank->>Archive: unpack attributes
+  Rank->>Layout: insert local particles
+```
+
+## Developer rules
+
+1. Keep communication ownership inside layouts or solver backends when possible; user code should normally call high-level operations.
+2. Use collective reductions for global checks such as norms, particle counts, and conserved quantities.
+3. Treat communication tags as part of the protocol; avoid ad hoc reuse in overlapping operations.
+4. Document whether a method is collective over the communicator or rank-local.
+
+## Documentation boundary
+
+The manual should explain communication contracts and common extension patterns. The exact overload set should remain in Doxygen.
