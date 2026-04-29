@@ -1,0 +1,237 @@
+# Browser Playground {#sec-playground}
+
+The playground keeps the manual page open while compilation and execution happen in a local Docker container. The first example is deliberately small: edit a `Hello IPPL` program, compile it, run it with MPI, inspect stdout, and edit again.
+
+## Start the local runner
+
+Start the runner on the local machine:
+
+```bash
+docker run --rm \
+  -p 127.0.0.1:5050:5050 \
+  ghcr.io/ippl-framework/ippl-runner:latest
+```
+
+The runner prints a token:
+
+```text
+IPPL runner token: ...
+```
+
+Paste that token into the field below. The token prevents unrelated websites from silently sending compile jobs to the local runner.
+
+## Hello IPPL
+
+```{=html}
+<style>
+.ippl-playground {
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1.25rem 0;
+  background: #f8fafc;
+}
+.ippl-playground-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  padding: 0.9rem;
+  border-bottom: 1px solid #d7dee8;
+  background: #eef3f8;
+}
+.ippl-playground-field {
+  display: grid;
+  gap: 0.25rem;
+}
+.ippl-playground-field label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #334155;
+}
+.ippl-playground input {
+  min-height: 2.1rem;
+  border: 1px solid #bac6d3;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  background: white;
+}
+.ippl-playground button {
+  min-height: 2.1rem;
+  border: 1px solid #1d4ed8;
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  color: white;
+  background: #1d4ed8;
+}
+.ippl-playground button.secondary {
+  color: #1d4ed8;
+  background: white;
+}
+.ippl-playground-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  min-height: 34rem;
+}
+.ippl-playground textarea,
+.ippl-playground pre {
+  width: 100%;
+  height: 100%;
+  min-height: 34rem;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 1rem;
+  font: 0.88rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  tab-size: 4;
+}
+.ippl-playground textarea {
+  resize: vertical;
+  border-right: 1px solid #d7dee8;
+  background: #ffffff;
+}
+.ippl-playground pre {
+  overflow: auto;
+  color: #d8e7ff;
+  background: #101828;
+  white-space: pre-wrap;
+}
+.ippl-playground-status {
+  padding: 0.65rem 0.9rem;
+  border-top: 1px solid #d7dee8;
+  color: #334155;
+  background: white;
+}
+@media (max-width: 900px) {
+  .ippl-playground-grid {
+    grid-template-columns: 1fr;
+  }
+  .ippl-playground textarea {
+    border-right: 0;
+    border-bottom: 1px solid #d7dee8;
+  }
+}
+</style>
+
+<div class="ippl-playground" id="ippl-playground">
+  <div class="ippl-playground-toolbar">
+    <div class="ippl-playground-field" style="min-width: 18rem;">
+      <label for="ippl-runner-token">Runner token</label>
+      <input id="ippl-runner-token" type="password" autocomplete="off" placeholder="Paste token printed by Docker">
+    </div>
+    <div class="ippl-playground-field" style="width: 7rem;">
+      <label for="ippl-runner-ranks">MPI ranks</label>
+      <input id="ippl-runner-ranks" type="number" min="1" max="4" value="2">
+    </div>
+    <button class="secondary" id="ippl-check-runner" type="button">Check runner</button>
+    <button id="ippl-run-code" type="button">Compile and run</button>
+  </div>
+  <div class="ippl-playground-grid">
+    <textarea id="ippl-source" spellcheck="false">#include "Ippl.h"
+
+int main(int argc, char* argv[]) {
+    ippl::initialize(argc, argv);
+
+    *ippl::Info &lt;&lt; "Hello from rank "
+                &lt;&lt; ippl::Comm-&gt;rank()
+                &lt;&lt; " of "
+                &lt;&lt; ippl::Comm-&gt;size()
+                &lt;&lt; ippl::endl;
+
+    ippl::finalize();
+    return 0;
+}
+</textarea>
+    <pre id="ippl-output">Start the local runner, paste the token, then compile and run.</pre>
+  </div>
+  <div class="ippl-playground-status" id="ippl-status">Runner URL: http://127.0.0.1:5050</div>
+</div>
+
+<script>
+(() => {
+  const runnerUrl = "http://127.0.0.1:5050";
+  const source = document.getElementById("ippl-source");
+  const output = document.getElementById("ippl-output");
+  const status = document.getElementById("ippl-status");
+  const token = document.getElementById("ippl-runner-token");
+  const ranks = document.getElementById("ippl-runner-ranks");
+  const checkButton = document.getElementById("ippl-check-runner");
+  const runButton = document.getElementById("ippl-run-code");
+
+  function setOutput(text) {
+    output.textContent = text;
+  }
+
+  function commandLine(stage) {
+    if (!stage || !stage.command) return "";
+    return "$ " + stage.command.join(" ") + "\nexit " + stage.returncode + "\n";
+  }
+
+  function stageText(label, stage) {
+    if (!stage) return "";
+    const stdout = stage.stdout ? "\nstdout:\n" + stage.stdout : "";
+    const stderr = stage.stderr ? "\nstderr:\n" + stage.stderr : "";
+    return "== " + label + " ==\n" + commandLine(stage) + stdout + stderr + "\n";
+  }
+
+  function formatResult(result) {
+    if (!result.ok && result.error) {
+      return "Error: " + result.error;
+    }
+    return [
+      "ok: " + result.ok,
+      "stage: " + result.stage,
+      "ranks: " + (result.ranks || ""),
+      "",
+      stageText("configure", result.configure),
+      stageText("build", result.build),
+      stageText("run", result.run)
+    ].join("\n");
+  }
+
+  async function checkRunner() {
+    status.textContent = "Checking runner...";
+    try {
+      const response = await fetch(runnerUrl + "/health");
+      const data = await response.json();
+      status.textContent = data.ok
+        ? "Runner is available. Paste the token printed by Docker before running code."
+        : "Runner responded, but did not report ok.";
+    } catch (error) {
+      status.textContent = "Runner is not reachable. Start Docker with the command shown above.";
+    }
+  }
+
+  async function runCode() {
+    runButton.disabled = true;
+    status.textContent = "Compiling and running...";
+    setOutput("Submitting code to local IPPL runner...");
+    try {
+      const response = await fetch(runnerUrl + "/compile-run", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          token: token.value,
+          source: source.value,
+          ranks: Number(ranks.value || 2)
+        })
+      });
+      const result = await response.json();
+      setOutput(formatResult(result));
+      status.textContent = result.ok ? "Run completed." : "Run failed at stage: " + (result.stage || "request");
+    } catch (error) {
+      setOutput(String(error));
+      status.textContent = "Could not contact local runner.";
+    } finally {
+      runButton.disabled = false;
+    }
+  }
+
+  checkButton.addEventListener("click", checkRunner);
+  runButton.addEventListener("click", runCode);
+  checkRunner();
+})();
+</script>
+```
+
+This first playground intentionally avoids arbitrary project structure, external files, and long-running jobs. The local runner accepts one source file, clamps the MPI rank count, applies compile/run timeouts, and returns stdout and stderr.

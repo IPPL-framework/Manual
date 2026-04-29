@@ -1,10 +1,8 @@
 # Getting Started {#sec-getting-started}
 
-IPPL is configured with CMake. A minimal build needs a C++20 compiler, MPI, and Kokkos. FFT and solver chapters require builds with `IPPL_ENABLE_FFT=ON` and usually `IPPL_ENABLE_SOLVERS=ON`.
+IPPL is configured with CMake. A minimal build needs a C++20 compiler, MPI, and Kokkos. FFT and solver chapters require builds with `IPPL_ENABLE_FFT=ON` and usually `IPPL_ENABLE_SOLVERS=ON`, but the first program does not need that stack.
 
-For browser-based experiments, open the prepared IPPL devcontainer branch in GitHub Codespaces:
-
-[Open IPPL devcontainer in Codespaces](https://codespaces.new/IPPL-framework/ippl?ref=ippl-container)
+For browser-based experiments, use the local runner workflow in @sec-playground. It keeps the manual open while compilation and execution happen in a Docker container on the user's machine.
 
 ## Minimal program
 
@@ -25,32 +23,17 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-## Compile and run the first target
+## Try it in the browser
 
-The devcontainer path is the most reproducible way to compile manual examples because the compiler, MPI, Kokkos, HeFFTe, and FFTW stack are all selected together. Start from the IPPL source tree inside the container:
-
-```bash
-cd /workspaces/ippl
-.devcontainer/scripts/configure.sh
-```
-
-Build and run the smoke target:
+The fastest first experiment is the browser playground in @sec-playground. Keep this manual open, start the local Docker runner, paste the token printed by the runner, then edit, compile, run, inspect stdout, and edit again.
 
 ```bash
-cmake --build build/devcontainer --target FFT --parallel 2
-ctest --preset devcontainer-smoke
+docker run --rm \
+  -p 127.0.0.1:5050:5050 \
+  ghcr.io/ippl-framework/ippl-runner:latest
 ```
 
-The expected result is a single passing FFT test:
-
-```text
-Start 17: FFT
-1/1 Test #17: FFT ..............................   Passed
-
-100% tests passed, 0 tests failed out of 1
-```
-
-This target is intentionally small, but it exercises the real stack: IPPL, MPI, Kokkos, HeFFTe, and FFTW.
+The runner image contains a CPU-only IPPL installation. It is intentionally scoped to short one-file examples, with no FFT, solver, or GPU stack.
 
 ## Compile a small IPPL program
 
@@ -82,14 +65,12 @@ cmake_minimum_required(VERSION 3.24)
 
 project(ippl_hello LANGUAGES CXX)
 
-set(IPPL_PLATFORMS "SERIAL;OPENMP" CACHE STRING "" FORCE)
-set(IPPL_ENABLE_FFT ON CACHE BOOL "" FORCE)
-set(IPPL_ENABLE_SOLVERS ON CACHE BOOL "" FORCE)
+set(IPPL_PLATFORMS "SERIAL" CACHE STRING "" FORCE)
+set(IPPL_ENABLE_FFT OFF CACHE BOOL "" FORCE)
+set(IPPL_ENABLE_SOLVERS OFF CACHE BOOL "" FORCE)
 set(IPPL_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(IPPL_ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(Kokkos_VERSION "git.4.7.02" CACHE STRING "" FORCE)
-set(Heffte_VERSION "git.v2.4.1" CACHE STRING "" FORCE)
-set(Heffte_ENABLE_FFTW ON CACHE BOOL "" FORCE)
 set(IPPL_SOURCE_DIR "/workspaces/ippl" CACHE PATH "IPPL source tree")
 
 add_subdirectory("${IPPL_SOURCE_DIR}" ippl-build)
@@ -136,7 +117,7 @@ cmake --build build
 mpiexec -n 2 build/hello_ippl
 ```
 
-Do not mix a host compiler, a different MPI installation, or a different Kokkos/HeFFTe installation with an IPPL build from the devcontainer.
+Do not mix a host compiler, a different MPI installation, or a different Kokkos installation with an existing IPPL build.
 
 ## Common configure modes
 
@@ -152,8 +133,8 @@ cmake -S /path/to/ippl -B build-openmp \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CXX_STANDARD=20 \
   -DIPPL_PLATFORMS=OPENMP \
-  -DIPPL_ENABLE_FFT=ON \
-  -DIPPL_ENABLE_SOLVERS=ON \
+  -DIPPL_ENABLE_FFT=OFF \
+  -DIPPL_ENABLE_SOLVERS=OFF \
   -DIPPL_ENABLE_TESTS=ON
 ```
 
@@ -163,9 +144,7 @@ cmake -S /path/to/ippl -B build-cuda \
   -DCMAKE_CXX_STANDARD=20 \
   -DIPPL_PLATFORMS=CUDA \
   -DKokkos_ARCH_AMPERE80=ON \
-  -DCMAKE_CUDA_ARCHITECTURES=80 \
-  -DIPPL_ENABLE_FFT=ON \
-  -DIPPL_ENABLE_SOLVERS=ON
+  -DCMAKE_CUDA_ARCHITECTURES=80
 ```
 
 ## Build options to document first

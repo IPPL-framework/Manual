@@ -15,6 +15,7 @@ book:
     - index.qmd
     - sections/overview/index.qmd
     - sections/getting-started/index.qmd
+    - sections/playground/index.qmd
     - sections/core-concepts/index.qmd
     - sections/fields/index.qmd
     - sections/particles/index.qmd
