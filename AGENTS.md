@@ -4,14 +4,17 @@
 IPPL is a C++ Particle and Field Library. 
 
 ## Documentation 
-- Use the same layout than in ~/git/PhysicsManual
+- Use the same layout than in ~/git/physics-manual-opalx
 - Use the Doxygen comments
 - Use mairmaid for class diagrms
+- number figures and tables
+- only number equations if they are referenced
+- manual must be A4 pdf exportable
 - Gudiline: the doc is for library user and librery developer
 
 ## Build
-- we will render this for githib io pages
-- use high estetic standards
+- we will render this for github io pages
+- use high estetic standards for figures etc
 
 ## External dependencies
 - Kokkos are external dependencies.
