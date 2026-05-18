@@ -161,8 +161,10 @@ flowchart LR
 
 ## `ParameterList`
 
-Solver and backend options are commonly passed through `ippl::ParameterList`. The allowed value types are `double`, `float`, `bool`, `std::string`, `unsigned int`, `int`, and nested `ParameterList`.
 
+Solvers take many options, such as type of algorithm used, etc. These also include options for the FFT provided by heffte. These are commonly passed through `ippl::ParameterList`.
+
+The ParameterList is a collection of options, identified with a key (`std::string`) and given a value. The allowed value types in the ParameterList are `double`, `float`, `bool`, `std::string`, `unsigned int`, `int`. The following is an example of a ParameterList with some heffte options:
 ```cpp
 ippl::ParameterList params;
 params.add("use_pencils", true);
@@ -171,5 +173,5 @@ params.add("use_gpu_aware", true);
 
 bool gpuAware = params.get<bool>("use_gpu_aware");
 ```
-
-`add` rejects duplicate keys. `get` without a default throws if the key is missing, while `get(key, defaultValue)` returns the default for absent keys.
+To add options to the ParameterList, we use `add(key, value)`. `add` rejects duplicate keys. The value of a key can be updated using `update(key, value)`.
+To get the value of an option in the ParameterList, we can use the `get<T>(key)` function. `get(key)` without a default throws if the key is missing, while `get(key, defaultValue)` returns the default for absent keys.
