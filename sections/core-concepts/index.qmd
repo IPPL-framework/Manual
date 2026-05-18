@@ -17,6 +17,9 @@ classDiagram
   }
   class UniformCartesian {
     +spacing
+  }
+  class Mesh {
+    +gridsize
     +origin
   }
   class FieldLayout {
@@ -38,6 +41,7 @@ classDiagram
   FieldLayout --> NDIndex
   Field --> FieldLayout
   Field --> UniformCartesian
+  UniformCartesian --> Mesh
   ParticleBase --> FieldLayout
 ```
 
@@ -142,7 +146,7 @@ flowchart LR
   Index1["Index y"]
   Index2["Index z"]
   Domain["NDIndex<Dim>"]
-  Mesh["UniformCartesian<T, Dim>"]
+  Mesh["UniformCartesian<T, Dim> (Mesh)"]
   Layout["FieldLayout<Dim>"]
   Field["Field<T, Dim, Mesh, Centering>"]
 
