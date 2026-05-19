@@ -2,7 +2,7 @@
 
 IPPL provides reusable components for scientific simulations that need distributed fields, particles, interpolation, FFTs, and solvers. The library is designed around templates for dimension, precision, and execution space, so the same user code can target serial, OpenMP, CUDA, or HIP builds when the backend stack is available.
 
-![](../../figures/ippl-structure.jpg){fig-alt="Legacy IPPL structure diagram" width="70%"}
+![](../../figures/ippl-structure.png){fig-alt="IPPL structure diagram" width="85%"}
 
 ## Main capabilities
 
@@ -25,9 +25,10 @@ flowchart TB
   Manager["Manager layer"]
   Particle["Particle containers"]
   Field["Distributed fields"]
+  FieldSolver["Field solvers"]
   Mesh["Mesh, index, region"]
   Interp["Interpolation"]
-  Solver["FFT, Poisson, Maxwell, FEM"]
+  Solver["Poisson, Maxwell"]
   Comm["MPI communication"]
   Kokkos["Kokkos execution and memory spaces"]
   Heffte["HeFFTe FFT backend"]
@@ -35,9 +36,11 @@ flowchart TB
   User --> Manager
   Manager --> Particle
   Manager --> Field
+  Manager --> FieldSolver
   Particle --> Interp
   Interp --> Field
   Field --> Mesh
+  FieldSolver --> Solver
   Solver --> Field
   Solver --> Heffte
   Particle --> Comm

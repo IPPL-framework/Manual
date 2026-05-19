@@ -6,12 +6,12 @@ Fields are distributed mesh data structures. They combine value type, dimension,
 
 | Class | Role |
 |---|---|
-| `BareField` | Core data container over Kokkos views. |
-| `Field` | User-facing field object with mesh and layout semantics. |
-| `FieldLayout` | Decomposition of a global index domain over MPI ranks. |
+| `BareField` | Core data container, with a Kokkos view to store the field data, and layout information. |
+| `Field` | User-facing field object with mesh and boundary condition information. |
+| `FieldLayout` | Decomposition of a global domain over MPI ranks. |
 | `SubFieldLayout` | Layout support for subdomains. |
 | `BConds` and `BcTypes` | Boundary condition containers and boundary condition types. |
-| `HaloCells` | Guard cell and halo exchange support. |
+| `HaloCells` | Ghost cell and halo exchange support. |
 
 ## Field anatomy
 
@@ -52,11 +52,17 @@ classDiagram
     +getMeshVolume()
     +getVertexPosition()
   }
+  class Mesh {
+    +getOrigin()
+    +getGridsize()
+  }
+
 
   Field --|> BareField
   Field --> BConds
   Field --> FieldLayout
   Field --> UniformCartesian
+  UniformCartesian --> Mesh
 ```
 
 ## Typical field workflow
@@ -69,15 +75,36 @@ classDiagram
 
 ## Minimal field setup
 
+The following sets up two fields: `rho`, a scalar field for the charge density, and `efield`, a vector field for the electric field.
+
 ```cpp
 constexpr unsigned Dim = 3;
 
 using Mesh_t      = ippl::UniformCartesian<double, Dim>;
+using Layout_t    = ippl::FieldLayout<Dim>;
 using Centering_t = Mesh_t::DefaultCentering;
 using ScalarField = ippl::Field<double, Dim, Mesh_t, Centering_t>;
 using Vector_t    = ippl::Vector<double, Dim>;
 using VectorField = ippl::Field<Vector_t, Dim, Mesh_t, Centering_t>;
 
+// Initialize a mesh of a unit box [0,1]^3, with 4 points.
+int points = 4;
+double unit_box = 1.0;
+
+ippl::Index I(pt);
+ippl::NDIndex<Dim> domain(I, I, I);
+
+double hx = unit_box / points;
+Vector_t spacing = {hx, hx, hx};
+Vector_t origin  = {0.0, 0.0, 0.0};
+Mesh_t mesh(domain, spacing, origin);
+
+// specify that we parallelize in all dimensions
+std::array<bool, 3> isParallel;
+isParallel.fill(true);
+Layout_t layout(MPI_COMM_WORLD, domain, isParallel);
+
+// Initialize fields 
 ScalarField rho;
 VectorField efield;
 
@@ -99,33 +126,47 @@ The `Field` template inherits from `BareField` and adds a mesh pointer plus fiel
 | `view_type` | Kokkos view type used for field storage. |
 | `BConds_t` | Boundary-condition container type for the field. |
 
-The constructor form `ScalarField rho(mesh, layout);` is also used in tests. The default ghost depth is one cell unless a different `nghost` value is supplied to the constructor or `initialize`.
+The constructor form `ScalarField field(mesh, layout);` is also used in tests. The default ghost depth is one cell unless a different `nghost` value is supplied to the constructor or `initialize`.
 
 ## Accessing data in kernels
 
-The Gaussian Poisson test shows the standard local-to-global mapping inside a field kernel:
-
+Field data can be accessed within a Kokkos kernel. For the most common parallel pattern, `Kokkos::parallel_for`, there exists an `ippl::parallel_for` to loop over fields in a dimension independent manner. As an example, the following loops over a field and assigns values:
 ```cpp
-auto view       = rho.getView();
-const int nghost = rho.getNghost();
-const auto& ldom = layout.getLocalNDIndex();
+auto view        = field.getView();
+const int nghost = field.getNghost();
 
-Kokkos::parallel_for(
-    "Assign rho field", rho.getFieldRangePolicy(),
-    KOKKOS_LAMBDA(const int i, const int j, const int k) {
-        const int ig = i + ldom[0].first() - nghost;
-        const int jg = j + ldom[1].first() - nghost;
-        const int kg = k + ldom[2].first() - nghost;
-
-        const double x = (ig + 0.5) * hr[0] + origin[0];
-        const double y = (jg + 0.5) * hr[1] + origin[1];
-        const double z = (kg + 0.5) * hr[2] + origin[2];
-
-        view(i, j, k) = gaussian(x, y, z);
+using index_array_type = typename ippl::RangePolicy<Dim>::index_array_type;
+ippl::parallel_for(
+    "Assign field values", field.getFieldRangePolicy(),
+    KOKKOS_LAMBDA(const index_array_type& args) {
+        // ippl::apply accesses the view at the given indices and obtains a
+        // reference; see src/Expression/IpplOperations.h
+        ippl::apply(view, args) = ...;
     });
 ```
 
-This pattern is worth documenting carefully because it makes three contracts explicit: local indices include ghost cells, `FieldLayout` provides the owned global offset, and cell-centered coordinates use the `0.5` shift.
+When doing operations which require the physical position of a point in the global domain (x, y, z), we need to map from the local index of the Field data in the Kokkos View (local to each MPI rank), to the global position in the full domain. 
+
+The standard way to do this is using the domain information in the layout and the mesh spacing. For example, when assigning field values according to a function, such as a sinusoidal:
+```cpp
+auto view        = field.getView();
+const int nghost = field.getNghost();
+
+const auto& ldom  = layout.getLocalNDIndex();
+const auto hr     = mesh.getMeshSpacing();
+const auto origin = mesh.getOrigin();
+
+using index_array_type = typename ippl::RangePolicy<Dim>::index_array_type;
+ippl::parallel_for(
+    "Assign field values", field.getFieldRangePolicy(),
+    KOKKOS_LAMBDA(const index_array_type& args) {
+        ippl::Vector<int, Dim> global_indices = args + ldom.first() - nghost;
+        ippl::Vector<double, Dim> global_position = (global_indices + 0.5) * hr + origin;
+        ippl::apply(view, args) = sin(global_position);
+    });
+```
+The layout (`FieldLayout`) contains information about the offset of the sub-domain owned by this MPI rank with respect to the global origin, given by `ldom.first()`. The local indexing also contains the ghost cells, hence why it needs to be subtracted to obtain a global index.
+The `+ 0.5` in the global position computation is needed due to cell centering.
 
 ## Layout and neighbors
 
@@ -157,6 +198,7 @@ Current field boundary conditions are stored in `BConds<Field, Dim>`, an array-l
 | `3` | upper face in dimension 1 |
 | `2 * d` | lower face in dimension `d` |
 | `2 * d + 1` | upper face in dimension `d` |
+The dimensions go from 0 up to Dim-1.
 
 Supported field boundary-condition classes are:
 
@@ -180,7 +222,7 @@ for (size_t face = 0; face < 2 * Dim; ++face) {
     bc[face] = std::make_shared<ippl::PeriodicFace<ScalarField>>(face);
 }
 
-rho.setFieldBC(bc);
+field.setFieldBC(bc);
 ```
 
 Mixed boundary conditions are also possible. `test/field/TestFieldBC.cpp` uses periodic faces in the x direction, no boundary condition on the lower y face, a constant value on the upper y face, zero on the lower z face, and extrapolation on the upper z face:
@@ -195,7 +237,7 @@ bc[3] = std::make_shared<ippl::ConstantFace<ScalarField>>(3, 7.0);
 bc[4] = std::make_shared<ippl::ZeroFace<ScalarField>>(4);
 bc[5] = std::make_shared<ippl::ExtrapolateFace<ScalarField>>(5, 0.0, 1.0);
 
-rho.setFieldBC(bc);
+field.setFieldBC(bc);
 ```
 
 `setFieldBC` stores the container and calls `findBCNeighbors` on the field. Differential operators such as `grad`, `div`, `laplace`, `curl`, and `hess` call `fillHalo()` and apply the field boundary conditions before building the expression object.
@@ -205,10 +247,10 @@ rho.setFieldBC(bc);
 Ghost cells provide local data for stencil operations at subdomain boundaries. A field has a ghost depth `nghost`, available through `getNghost()`. Halo exchange is invoked explicitly with:
 
 ```cpp
-rho.fillHalo();
+field.fillHalo();
 ```
 
-Field operations that require neighbor values call halo filling internally. For custom kernels, users must decide whether the operation reads only owned cells or also reads ghost cells. If the kernel reads stencil neighbors across rank boundaries, call `fillHalo()` and apply boundary conditions first.
+Field operations that require neighbor values call `fillHalo` internally. For custom kernels, users must decide whether the operation needs only owned cells of the MPI rank or also ghost cells. If the kernel needs neighbors across rank boundaries, e.g. for stencil operations, call `fillHalo()` and apply boundary conditions first.
 
 ## Expressions and reductions
 
@@ -217,56 +259,55 @@ Fields support scalar assignment, field expressions, math functions, and reducti
 | Operation | Example |
 |---|---|
 | scalar assignment | `rho = 1.0;` |
-| deep copy | `auto copy = rho.deepCopy();` |
+| deep copy | `auto rho_copy = rho.deepCopy();` |
 | arithmetic | `rho = rho - exact;` |
 | sum | `double q = rho.sum();` |
 | norm | `double err = norm(rho) / norm(exact);` |
 | volume integral | `rho.getVolumeIntegral();` |
 | volume average | `rho.getVolumeAverage();` |
-| gradient | `efield = grad(rho);` |
+| gradient | `efield = grad(phi);` |
 | divergence | `rho = div(efield);` |
 | curl | `result = curl(vectorField);` |
 | Hessian | `matrixField = hess(rho);` |
 | Laplacian | `lap = laplace(rho);` |
 
-The differential operators use mesh spacing from `UniformCartesian`. For example, `laplace` builds coefficients from `1 / h_d^2` in each dimension, while `grad` and `div` use centered differences scaled by `0.5 / h_d`.
+The differential operators use the spacing obtained from the `UniformCartesian` mesh. For example, `laplace` has a pre-factor of `1 / h[d]^2` in each dimension d.
 
 ## Laplacian example
 
-`test/field/TestLaplace.cpp` is the compact example for differential field operators. It builds a periodic scalar field on `[-1, 1]^3`,
+`test/field/TestLaplace.cpp` is the compact example for differential field operators. It builds a 3-dimensinal periodic scalar field on `[-1, 1]^3`,
 
-\[
+$$
 u(x,y,z) = \sin(\pi x)\sin(\pi y)\sin(\pi z),
-\]
+$$
 
-then compares `laplace(field)` with
+then compares `laplace(field)` with the exact form
 
-\[
+$$
 \nabla^2 u = -3\pi^2 \sin(\pi x)\sin(\pi y)\sin(\pi z).
-\]
+$$
 
 The relevant operator call is deliberately simple:
 
 ```cpp
 Lap = laplace(field);
+
+// Error computation
 Lap = Lap - Lap_exact;
 Lap = pow(Lap, 2);
-
 double error = sqrt(Lap.sum()) / sqrt(Lap_exact.sum());
 ```
 
-Run shape:
+To run the test, we pass the number of grid-points (indicating the mesh spacing), and the number of times we want to repeat the operation:
 
 ```bash
 srun ./TestLaplace <points-per-dimension> <iterations>
 ```
 
-This example is a good manual candidate because it touches domain construction, mesh spacing, periodic boundary conditions, local-to-global coordinate conversion, expression assignment, reductions, timing, and explicit `ippl::fence()` calls inside a benchmark loop.
-
 ## Sub-layouts
 
-The test suite contains parallel coverage for both full layouts and sub-layouts. The user-level contract is the same: a field is tied to a mesh and a layout, while the layout determines local domains, neighbor relationships, and halo ranges. Sub-layout documentation should be expanded once the `SubFieldLayout` examples are promoted into the manual.
+TO-DO
 
 ## Documentation tasks
 
-Remaining migration work from the legacy LaTeX manual: older `where` examples, a compact table of mathematical functions supported by expressions, and a side-by-side update of legacy constructor forms to current constructor forms.
+Remaining migration work from the legacy LaTeX manual: older `where` examples, a compact table of mathematical functions supported by expressions, and a side-by-side update of legacy constructor forms to current constructor forms. 
