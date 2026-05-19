@@ -277,15 +277,15 @@ The differential operators use the spacing obtained from the `UniformCartesian` 
 
 `test/field/TestLaplace.cpp` is the compact example for differential field operators. It builds a 3-dimensinal periodic scalar field on `[-1, 1]^3`,
 
-\[
+$$
 u(x,y,z) = \sin(\pi x)\sin(\pi y)\sin(\pi z),
-\]
+$$
 
 then compares `laplace(field)` with the exact form
 
-\[
+$$
 \nabla^2 u = -3\pi^2 \sin(\pi x)\sin(\pi y)\sin(\pi z).
-\]
+$$
 
 The relevant operator call is deliberately simple:
 
