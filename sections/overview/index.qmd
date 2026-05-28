@@ -1,8 +1,12 @@
 # Overview {#sec-overview}
 
-IPPL provides reusable components for scientific simulations that need distributed fields, particles, interpolation, FFTs, and solvers. The library is designed around templates for dimension, precision, and execution space, so the same user code can target serial, OpenMP, CUDA, or HIP builds when the backend stack is available.
+IPPL provides reusable components for scientific simulations that need distributed fields, particles, interpolation, FFTs, and solvers. The library is designed around templates for dimension, floating point precision, and execution space, so the same user code can target serial, OpenMP, CUDA, or HIP builds when the backend stack is available.
 
 ![](../../figures/ippl-structure.png){fig-alt="IPPL structure diagram" width="85%"}
+
+IPPL has a modular interface, containing all the building blocks of particle-mesh simulations which can be mixed and matched. For example, it is possible for users to only use the part of the library they need, such as field solvers to solve the Poisson equation, without having to use particles or go through a PIC style simulation. Furthermore, these building blocks are written in a dimension independent manner, supporting the same number of dimensions as supported by Kokkos views (see [documentation](https://kokkos.org/kokkos-core-wiki/ProgrammingGuide/Multi-Dimensional-Parallelism.html). IPPL has full Particle-in-Cell capabilities for 1D, 2D, and 3D simulations. One can choose the floating point precision of many of the components, making it simple to run mixed precision simulations.
+
+On top of the IPPL core, we have Alpine. This is a set of benchmark applications from plasma physics, such as Landau damping or a Penning trap, which are used to verify correctness as well as measure performance [@muralikrishnan2024scalingPicMiniapps].
 
 ## Main capabilities
 
