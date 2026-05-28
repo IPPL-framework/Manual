@@ -2,6 +2,8 @@
 
 Maxwell solver support covers finite-difference time-domain and finite-element diffusion-oriented formulations.
 
+The thesis context is useful here: electrostatic PIC can be handled by Poisson solves, but full electromagnetic PIC requires Maxwell solvers together with charge-conserving interpolation to maintain physical constraints consistently [@mayani2026massivelyParallelPhd].
+
 ```{mermaid}
 classDiagram
   class Maxwell
@@ -71,6 +73,10 @@ Manual examples should state the field layout, grid spacing, time step, source c
 
 `NonStandardFDTDSolver` adds nondispersive coefficients `a1`, `a2`, `a4`, `a6`, and `a8`. The source mentions Taflove-style FDTD references and MITHRA 2.0; the manual should keep the numerical derivation brief and link to the implementation and publications for details.
 
+### FDTD method notes
+
+In the Yee-style formulation, electric and magnetic components are staggered in space and time so centered finite differences can be used for curl operators. This gives a second-order scheme and good locality for parallel execution. The same thesis discussion also highlights known limitations: numerical dispersion and CFL-limited time step size, which can become expensive for long/high-resolution runs [@mayani2026massivelyParallelPhd].
+
 ## FEM Maxwell diffusion
 
 `FEMMaxwellDiffusionSolver` solves the model problem
@@ -81,6 +87,14 @@ $$
 $$
 
 It uses `NedelecSpace`, `FEMVector`, and a preconditioned conjugate-gradient solve. The default parameter values are `max_iterations = 10` and `tolerance = 1e-13`, and users can query `getIterationCount()` and `getResidue()` after a solve. The class also provides `reconstructToPoints()` and `getL2Error()` for verification workflows.
+
+### Why Nedelec space is used
+
+For Maxwell-type problems, `H(curl)` conformity is required for electric fields. This is why the implementation is built on `NedelecSpace` rather than nodal `H1` spaces: it enforces the correct tangential continuity structure and avoids artifacts associated with incompatible spaces in curl-curl formulations [@mayani2026massivelyParallelPhd].
+
+### Current scope
+
+The existing FEM Maxwell implementation in IPPL is a diffusion-model solver (`curl curl + mass` form). A full FETD pipeline for time-domain EM-PIC additionally needs compatible magnetic-field spaces and time integration orchestration.
 
 ## Tests to document first
 

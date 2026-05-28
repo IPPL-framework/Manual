@@ -106,6 +106,35 @@ The common base provides the indexing vocabulary:
 | `test/solver/fem/TestNonhomDirichlet_*` | Show non-homogeneous boundary treatment. |
 | `test/solver/fem/TestMaxwellDiffusion*` | Show Nedelec-based Maxwell diffusion verification. |
 
+## Matrix-free solver workflow
+
+The thesis describes the FEM solver flow as a matrix-free operator pipeline rather than sparse-matrix assembly [@mayani2026massivelyParallelPhd]:
+
+1. Build/load the RHS in FEM DOF space (`evaluateLoadVector` or particle-assembled RHS).
+2. Apply PDE operator through `evaluateAx` with element-local quadrature loops.
+3. Solve iteratively (CG/PCG) on distributed vectors.
+4. Exchange halo contributions (`fillHalo` before local element loops, `accumulateHalo` after).
+
+This is the key design choice for GPU-oriented scalability: avoid global assembled matrices and express all heavy work as local element kernels plus controlled communication.
+
+## Boundary and layout handling
+
+Practical FEM behavior in IPPL follows these contracts:
+
+- **Element ownership:** element loops are driven by per-rank element index sets derived from layout ownership.
+- **Halo dependency:** rank-local element computations may require DOFs owned by neighbors; halo exchange is part of operator correctness, not an optimization.
+- **Dirichlet handling:** homogeneous Dirichlet constraints are enforced by boundary-DOF treatment in assembly/operator logic; non-homogeneous constraints use lifting/identity-style treatment on constrained DOFs.
+- **Periodic handling:** opposite boundary DOFs are identified as shared constraints and accumulated consistently.
+
+## FEM-PIC coupling in practice
+
+For electrostatic PIC with FEM Poisson, scatter/gather is replaced by basis-function projections [@mayani2026massivelyParallelPhd]:
+
+- Particle-to-mesh: assemble load vector from particle charges evaluated through FEM basis functions.
+- Mesh-to-particle: interpolate solved DOF values back to particle positions.
+
+This coupling path is implemented through FEM interpolation utilities and benchmarked in Landau damping workflows as an end-to-end correctness check.
+
 ## Developer focus
 
 FEM documentation should be unusually explicit about local-to-global degree-of-freedom mapping, boundary handling, assembly contracts, and which code runs in device contexts.

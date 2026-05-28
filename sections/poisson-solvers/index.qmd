@@ -16,6 +16,8 @@ IPPL contains several Poisson solver paths for periodic, open, and finite-elemen
 
 The free-space spectral Poisson solver work is an important reference for this chapter [@mayani2025freeSpacePoisson].
 
+The 2026 thesis consolidates solver behavior across correctness, memory footprint, and scaling studies for FFT- and FEM-based Poisson paths in IPPL [@mayani2026massivelyParallelPhd].
+
 ## Solver hierarchy
 
 ```{mermaid}
@@ -202,6 +204,40 @@ After `solve()`, the scalar RHS field contains the solution when `output_type` i
 | `BIHARMONIC` | Biharmonic open-boundary variant, tested separately. |
 
 The solver owns or constructs auxiliary domains for doubled fields, complex Fourier fields, Green functions, and, for Vico variants, larger Green function workspaces.
+
+### Thesis-backed behavior summary
+
+The thesis results provide a practical interpretation of when each free-space method is advantageous [@mayani2026massivelyParallelPhd]:
+
+| Source regularity | Observed behavior | Practical recommendation |
+|---|---|---|
+| Smooth source (e.g. Gaussian) | Vico-family methods show spectral convergence; Hockney-Eastwood remains second order. | Prefer `DCT_VICO` when memory allows and smoothness matters. |
+| Non-smooth source (e.g. compact-support sphere) | Vico-family methods lose spectral convergence and behave effectively second order. | Accuracy gap narrows; choose based on runtime/memory trade-offs. |
+| Large production runs | Optimized Vico (`DCT_VICO`) is designed to reduce memory overhead of original Vico while retaining high-accuracy potential. | Prefer `DCT_VICO` over original `VICO` for large cases. |
+
+In practical terms, `DCT_VICO` is the default "high-upside" choice for smooth electrostatic sources, while `HOCKNEY` remains a robust baseline.
+
+## Implementation notes from the thesis
+
+The free-space solve path in IPPL follows the same high-level stages for Hockney and Vico variants [@mayani2026massivelyParallelPhd]:
+
+1. zero-pad the source to a doubled domain,
+2. perform FFT/DCT transforms and spectral multiplication by Green function data,
+3. restrict the result back to the original domain.
+
+For distributed layouts, the expensive part is not only FFTs but also data movement between original and doubled-domain ownership maps. In IPPL this is implemented with overlap detection, pack/send, and unpack/accumulate patterns over rank-local subdomains.
+
+## Method selection guide
+
+Use the following policy unless application-specific validation says otherwise:
+
+| Goal | Suggested solver |
+|---|---|
+| Best general baseline for open BCs | `FFTOpenPoissonSolver` with `HOCKNEY` |
+| Higher accuracy on smooth sources | `FFTOpenPoissonSolver` with `DCT_VICO` |
+| Periodic electrostatics with spectral solve | `FFTPeriodicPoissonSolver` |
+| Iterative finite-difference route and preconditioner experimentation | `PoissonCG` |
+| FEM route (space compatibility, matrix-free FE operators) | `FEMPoissonSolver` / `PreconditionedFEMPoissonSolver` |
 
 Related ETH work covers the state of the open-boundary FFT solver and alternative open Poisson directions, including Vico-Greengard improvements and a dual-space multilevel kernel-splitting approach [@montanaro2023openBoundaryFftPoisson; @ammann2024dualSpaceKernelSplitting].
 
