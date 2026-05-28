@@ -1,0 +1,121 @@
+# Theory {#sec-theory}
+
+This chapter summarizes the numerical theory behind Particle-In-Cell (PIC) methods used throughout IPPL. The focus is on the parts users need to reason about solver choices, interpolation accuracy, stability, and conservation in real simulations.
+
+## From Vlasov-Maxwell to PIC
+
+PIC approximates a kinetic plasma (or charged beam) by evolving macro-particles in continuous phase space while solving fields on a mesh. In electromagnetic form, the model is:
+
+$$
+\frac{\partial f_s}{\partial t} + \mathbf{v}\cdot\nabla_{\mathbf{x}} f_s +
+\frac{q_s}{m_s}\left(\mathbf{E} + \mathbf{v}\times\mathbf{B}\right)\cdot\nabla_{\mathbf{v}} f_s = 0,
+$$
+
+coupled to Maxwell equations for \(\mathbf{E}\) and \(\mathbf{B}\).
+
+In electrostatic settings, the field solve often reduces to Poisson:
+
+$$
+\nabla^2 \phi = -\rho, \qquad \mathbf{E} = -\nabla\phi.
+$$
+
+IPPL supports both classes: electrostatic (Poisson-based) and electromagnetic (Maxwell-based) workflows.
+
+## Discrete PIC loop
+
+At each time step, PIC applies the same operator-splitting pattern:
+
+```{mermaid}
+flowchart LR
+  Deposit["Deposit charge/current to mesh"] --> Solve["Solve field equations"]
+  Solve --> Gather["Interpolate field to particles"]
+  Gather --> Push["Advance particles in phase space"]
+  Push --> Migrate["Migrate particles across subdomains"]
+  Migrate --> Deposit
+```
+
+Algorithmically:
+
+1. **Deposit (scatter):** map particle quantities to mesh DOFs.
+2. **Solve:** compute \(\phi\), \(\mathbf{E}\), \(\mathbf{B}\), or derived fields.
+3. **Gather:** interpolate mesh fields at particle positions.
+4. **Push:** update momentum/velocity and position.
+5. **Migrate:** redistribute particles after motion in distributed memory.
+
+This decomposition is exactly how IPPL chapters on particles, particle-mesh coupling, and solvers connect.
+
+## Particle shape functions and interpolation
+
+PIC does not treat particles as true points numerically. Each macro-particle is associated with a shape function \(S(\mathbf{x}-\mathbf{x}_p)\). The same shape family should be used consistently for:
+
+- particle-to-mesh deposition,
+- mesh-to-particle interpolation.
+
+This symmetry reduces self-force and improves discrete conservation behavior.
+
+For first-order cloud-in-cell (CIC), each particle contributes to \(2^{\mathrm{Dim}}\) neighboring nodes with tensor-product linear weights. In 3D that is 8 nodes per particle.
+
+## Time integration and particle pushers
+
+A common second-order choice is leapfrog staggering:
+
+- positions at integer steps \(t^n\),
+- velocities/momenta at half steps \(t^{n+1/2}\).
+
+Typical update form:
+
+$$
+\mathbf{v}^{n+1/2} = \mathbf{v}^{n-1/2} + \frac{q}{m}\,\mathbf{E}^n\,\Delta t,
+\qquad
+\mathbf{x}^{n+1} = \mathbf{x}^{n} + \mathbf{v}^{n+1/2}\,\Delta t.
+$$
+
+For full EM-PIC, the Lorentz term \(\mathbf{v}\times\mathbf{B}\) is included through an appropriate pusher variant.
+
+## Conservation and consistency
+
+Three discrete properties matter most in practice:
+
+1. **Global charge consistency:** total deposited charge matches total particle charge (up to boundary handling and floating-point reductions).
+2. **Field-particle interpolation consistency:** using compatible gather/scatter stencils reduces numerical artifacts.
+3. **Constraint compatibility:** for EM-PIC, charge-conserving deposition is needed so Gauss constraints remain consistent with field updates.
+
+In IPPL, these are validated by unit/regression tests in particle, interpolation, and solver paths.
+
+## Stability and resolution guidelines
+
+### Time step
+
+For explicit Maxwell/FDTD-style updates, \(\Delta t\) is constrained by a CFL condition tied to mesh spacing and wave speed. Smaller cells generally require smaller time steps.
+
+### Grid resolution
+
+Finer grids reduce discretization error but increase:
+
+- memory footprint,
+- communication volume,
+- FFT/solver cost.
+
+### Particle count per cell
+
+Higher particles-per-cell reduce sampling noise but increase particle push and communication cost.
+
+Practical runs balance all three knobs together: mesh size, time step, and particles per cell.
+
+## Electrostatic vs electromagnetic PIC
+
+| Mode | Field equation | Typical use | Main numerical cost |
+|---|---|---|---|
+| Electrostatic PIC | Poisson solve | space-charge dominated dynamics | global solve (FFT/iterative/FEM) |
+| Electromagnetic PIC | Maxwell solve | wave/laser/radiation interactions | field updates + tighter CFL + current deposition |
+
+This distinction drives solver selection in IPPL (`poisson-solvers`, `maxwell-solvers`, `fem`).
+
+## Where this maps in IPPL
+
+- @sec-particle-mesh explains gather/scatter and PIC loop realization.
+- @sec-poisson-solvers covers electrostatic solve options.
+- @sec-maxwell-solvers covers FDTD and FEM Maxwell formulations.
+- @sec-fem explains matrix-free finite-element machinery used by FEM solvers.
+
+Use this chapter as the numerical context, then move to those implementation chapters for concrete APIs and run patterns.

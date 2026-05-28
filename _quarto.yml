@@ -14,6 +14,7 @@ book:
   chapters:
     - index.qmd
     - sections/overview/index.qmd
+    - sections/theory/index.qmd
     - sections/getting-started/index.qmd
     - sections/playground/index.qmd
     - sections/core-concepts/index.qmd
