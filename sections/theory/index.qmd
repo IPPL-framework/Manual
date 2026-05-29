@@ -1,6 +1,6 @@
 # Theory {#sec-theory}
 
-As mentioned, IPPL provides the main building blocks for particle-mesh simulations. One such method is the Particle-in-Cell (PIC) method. In this section, we give a brief overview of the physics and numerical theory behind it. For further information, please see [@hockney1980] and [@birdsall2018]. 
+As mentioned, IPPL provides the main building blocks for particle-mesh simulations. One such method is the Particle-in-Cell (PIC) method. In this section, we give a brief overview of the physics and numerical theory behind it. For further information, please see [@hockney1988] and [@birdsall2018]. 
 
 Even though the Particle-in-Cell method is versatile and used in many fields, here we will focus on electromagnetism for the sake of discussion. 
 
@@ -22,7 +22,7 @@ The Newton-Lorentz equations of motion are easily deduced from the Vlasov equati
 $$
 \begin{align}
 	 \frac{d\vec{x}}{dt} &= \vec{v}, \label{eq:motion_x} \\
-	  \frac{d\vec{v}}{dt} &= \frac{q_s}{m_s}(\vec{E} + \vec{v}\cross\vec{B}) = \frac{\vec{F}}{m_s}, \label{eq:motion_v}
+	  \frac{d\vec{v}}{dt} &= \frac{q_s}{m_s}(\vec{E} + \vec{v}\times\vec{B}) = \frac{\vec{F}}{m_s}, \label{eq:motion_v}
 \end{align}
 $$
 
@@ -30,8 +30,8 @@ To obtain the fields $\mathbf{E}$ and $\mathbf{B}$, we use the Maxwell equations
 
 $$
 \begin{align}
-	\vec{\nabla}\cross\vec{E} &= -\frac{\partial \vec{B}}{\partial t},  & \text{(Faraday's law)} \label{eq:maxwell_eq1} \\
-	\vec{\nabla}\cross\vec{B} &= \mu_0 \vec{J} + \mu_0\epsilon_0 \frac{\partial \vec{E}}{\partial t}, & \text{(Ampère's law)}  \label{eq:maxwell_eq2}\\
+	\vec{\nabla}\times\vec{E} &= -\frac{\partial \vec{B}}{\partial t},  & \text{(Faraday's law)} \label{eq:maxwell_eq1} \\
+	\vec{\nabla}\times\vec{B} &= \mu_0 \vec{J} + \mu_0\epsilon_0 \frac{\partial \vec{E}}{\partial t}, & \text{(Ampère's law)}  \label{eq:maxwell_eq2}\\
 	\vec{\nabla}\cdot\vec{E} &= \frac{\rho}{\epsilon_0}, & \text{(Gauss's law)} \label{eq:maxwell_eq3}\\
 	\vec{\nabla}\cdot\vec{B}  &= 0,  & \text{(No magnetic monopole)} \label{eq:maxwell_eq4}
 \end{align}
@@ -56,13 +56,14 @@ In PIC, particle are tracked in phase space, with positions and velocities evolv
 Algorithmically:
 
 1. **Scatter (particle to grid):** map particle quantities to grid points of the mesh.
-2. **Solve:** compute \(\phi\), \(\mathbf{E}\), \(\mathbf{B}\), or derived fields by solving Poisson or Maxwell's equations.
+2. **Solve:** compute $\phi$, $\mathbf{E}$, $\mathbf{B}$, or derived fields by solving Poisson or Maxwell's equations.
 3. **Gather (grid to particle):** interpolate mesh fields at particle positions.
 4. **Push:** update momentum/velocity and position, using a time-stepping scheme for the equations of motion.
 
 Furthermore, each computational particle in PIC is a macro-particle.
 
 All the main components of the IPPL library are used in this method:
+
 - Particles (@sec-particles)
 - Fields (@sec-fields)
 - Interpolation schemes such as Cloud-in-Cell (@sec-particle-mesh)
