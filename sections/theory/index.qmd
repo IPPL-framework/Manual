@@ -68,3 +68,9 @@ All the main components of the IPPL library are used in this method:
 - Fields (@sec-fields)
 - Interpolation schemes such as Cloud-in-Cell (@sec-particle-mesh)
 - Field solvers on the grid which solve PDEs, such as Poisson solvers (@sec-poisson-solvers) and Maxwell solvers (@sec-maxwell-solvers)
+
+## Adding collisions
+
+In the case of collisions, the right-hand side of the Vlasov equation is non-zero, and this can be treated numerically in multiple ways. One of these is the P3M (Particle-Particle Particle-Mesh) method. 
+
+TODO: explain P3M.
