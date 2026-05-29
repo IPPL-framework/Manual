@@ -1,6 +1,6 @@
 # Particles {#sec-particles}
 
-Particles in IPPL are treated used a Particle container, which stores particle attributes (such as charge, position, and velocity). Furthermore, it contains layout information, which tells each rank which particles they own according to domain decomposition.
+Particles in IPPL are treated as a particle container, which stores particle attributes (such as charge, position, and velocity). Furthermore, it contains layout information, which tells each rank which particles they own according to domain decomposition.
 
 This is the Lagrangian half of IPPL's particle-mesh model.
 
@@ -136,20 +136,77 @@ bunch.update();
 
 ## Creation and initialization
 
-```cpp
-using PLayout_t = ippl::ParticleSpatialLayout<double, Dim>;
+For the particle container creation, a `ParticleSpatialLayout` is needed, which uses the same domain decomposition description as for the fields. Therefore, a `FieldLayout` of an IPPL mesh is needed first (to obtain the domain decomposition, which is fully grid-based). 
 
+| Object | Role in particle setup |
+|---|---|
+| `NDIndex<Dim>` | Global grid extent (number of cells per axis). |
+| `UniformCartesian<T, Dim>` (`mesh`) | Physical spacing, origin, and cell geometry. |
+| `FieldLayout<Dim>` (`fieldLayout`) | MPI decomposition: which rank owns which part of the domain. |
+| `ParticleSpatialLayout<T, Dim>` | Maps particle positions to rank-owned regions using `fieldLayout` and `mesh`. |
+
+End-to-end setup (same pattern as `test/particle/PICnd.cpp`):
+
+```cpp
+constexpr unsigned Dim = 3;
+
+// 1) Domain and mesh to obtain FieldLayout
+ippl::Vector<int, Dim> nr = {64, 64, 64};
+ippl::NDIndex<Dim> domain;
+for (unsigned d = 0; d < Dim; ++d) {
+    domain[d] = ippl::Index(nr[d]);
+}
+
+ippl::Vector<double, Dim> origin = {0.0, 0.0, 0.0};
+ippl::Vector<double, Dim> hr = {1.0 / nr[0], 1.0 / nr[1], 1.0 / nr[2]};
+
+using Mesh_t = ippl::UniformCartesian<double, Dim>;
+Mesh_t mesh(domain, hr, origin);
+
+// we parallely decompose all dimensions
+std::array<bool, Dim> isParallel;
+isParallel.fill(true);
+
+using FieldLayout_t = ippl::FieldLayout<Dim>;
+FieldLayout_t fieldLayout(MPI_COMM_WORLD, domain, isParallel);
+
+// 2) Particle layout and container
+using PLayout_t = ippl::ParticleSpatialLayout<double, Dim>;
 PLayout_t particleLayout(fieldLayout, mesh);
+
 ChargedParticles<PLayout_t> bunch(particleLayout);
 
-const unsigned nloc = totalParticles / ippl::Comm->size();
+// 3) Create local particles and set attributes
+const size_t totalParticles = 10000;
+size_t nloc = totalParticles / ippl::Comm->size();
 bunch.create(nloc);
 bunch.qm = totalCharge / totalParticles;
 bunch.P  = 0.0;
+
+// 4) Enforce ownership after positions are set
 bunch.update();
 ```
 
-`create(nLocal)`, `globalCreate(nTotal)`, `createWithID(id)`, `destroy(invalid, destroyNum)`, and `update()` are collective operations. Every MPI rank must call them in the same control-flow context.
+`globalCreate(totalParticles)` is an alternative to `create(nloc)`, which requires hand-splitting `nloc`. If using `globalCreate(totalParticles)`, every rank calls it with the same global count, and IPPL distributes particles across ranks.
+
+### Collective operations
+
+`create`, `globalCreate`, `createWithID`, `destroy`, and `update` are **collective** in the MPI sense: **every rank in the communicator must execute the call**, even if local arguments differ (for example each rank passes its own `nloc`).
+
+Do not guard these calls so that only some ranks run them:
+
+```cpp
+// Wrong: rank 0 skips create(); other ranks hang or corrupt state
+if (ippl::Comm->rank() == 0) {
+    bunch.create(nloc);
+}
+
+// Correct: every rank calls create; nloc may differ per rank
+bunch.create(nloc);
+```
+
+The same rule applies after `if` branches: if one code path calls `update()`, every rank must take a path that also calls `update()` (or none must). Avoid `return` on one rank before a collective while others continue.
+
 
 ## Particle boundary conditions
 
@@ -176,9 +233,9 @@ bcs.fill(ippl::BC::PERIODIC);
 bunch.setParticleBC(bcs);
 ```
 
-The spatial layout applies particle boundary conditions at the start of `update()`, before migration. Unit tests cover upper and lower faces for periodic, reflective, sink, and no-boundary behavior.
+The spatial layout applies particle boundary conditions at the start of `update()`, before migration of particles to appropriate ranks. Unit tests cover upper and lower faces for periodic, reflective, sink, and no-boundary behavior.
 
-## Spatial migration
+## Particle update (spatial migration)
 
 `ParticleSpatialLayout` maps particle positions to rank-owned spatial regions derived from a `FieldLayout` and a mesh. The update algorithm is:
 
@@ -202,16 +259,14 @@ flowchart LR
   R --> BC --> Locate --> Pack --> Delete --> Recv --> Valid
 ```
 
-The `ParticleSendRecv` unit test verifies the core invariant after migration: every remaining local particle has an expected rank equal to `ippl::Comm->rank()`, and the global particle count is conserved.
+The `ParticleSendRecv` unit test verifies that after migration every remaining local particle has an expected rank equal to `ippl::Comm->rank()`, and the global particle count is conserved.
 
 ## Developer model
 
 Particle data movement is a correctness-critical layer. Changes to particle layouts must be documented with:
 
-- ownership invariant,
-- migration trigger,
 - communication pattern,
 - memory-space assumptions,
 - unit tests covering multiple dimensions and execution spaces.
 
-The test suite instantiates particle tests across precision, dimensions, and execution spaces. When adding a particle feature, prefer tests that cover both host and device memory-space paths and more than one dimension.
+The test suite instantiates particle tests across floating point precision, dimensions (1D to 3D), and execution spaces. When adding a particle feature, prefer tests that cover both host and device memory-space paths and more than one dimension.
