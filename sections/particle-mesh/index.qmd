@@ -1,40 +1,27 @@
-# Particle-Mesh Methods {#sec-particle-mesh}
+# Interpolation in Particle-Mesh methods {#sec-particle-mesh}
 
-Particle-mesh workflows combine distributed particles, distributed fields, interpolation, and solvers. The core cycle is common across plasma, accelerator, and astrophysical applications.
+Particle-mesh workflows combine distributed particles, distributed fields, interpolation, and solvers. The core cycle is common across plasma, accelerator, and astrophysical applications. More concretely, it is the basis of the Particle-in-Cell (PIC) method introduced in @sec-theory.
 
-```{mermaid}
-flowchart LR
-  Push["Advance particles"]
-  Migrate["Update particle layout"]
-  Deposit["Scatter/deposit to mesh"]
-  Solve["Solve field equation"]
-  Gather["Gather field to particles"]
+As a reminder, the core operations of a Particle-Mesh method result from the intertwining of a Lagrangian and Eulerian approach. In the case of the PIC method, these operations form the PIC loop:
 
-  Push --> Migrate --> Deposit --> Solve --> Gather --> Push
-```
+![](../../figures/pic_loop.png){fig-alt="PIC loop" width="85%"}
 
-## Core operations
-
-| Operation | IPPL area |
-|---|---|
-| Particle advance | User container or manager code |
-| Particle migration | `ParticleSpatialLayout`, overlap layout |
-| Deposit/scatter | `CIC`, particle-field interaction |
-| Field solve | Poisson, Maxwell, FFT, FEM solvers |
-| Gather | `CIC`, field interpolation to particle positions |
+The scatter and gather operations in the PIC loop (see @sec-theory) require interpolation from particles to grid and vice-versa. The choice of interpolation scheme depends on the accuracy needs of the application.
 
 ## CIC interface
 
-Cloud-in-cell interpolation currently appears as global gather/scatter functions. The implementation scatters to or gathers from `2^Dim` neighboring mesh points. In 2D, for example, the contributing points are `(i, j)`, `(i - 1, j)`, `(i, j - 1)`, and `(i - 1, j - 1)`.
+Cloud-in-Cell (CIC) interpolation is a first-order method which distributes a particle attribute among all the surrounding grid points according to the distance between the particle and the points.
 
-The PIC test uses the interface directly:
+Currently, CIC interpolation can be applied to a particle attribute by using global gather/scatter functions defined in `src/Interpolation/CIC.h`. The implementation scatters to or gathers from `2^Dim` neighboring mesh points. In 2D, for example, the contributing points are `(i, j)`, `(i - 1, j)`, `(i, j - 1)`, and `(i - 1, j - 1)`.
+
+The example below scatters the charge-to-mass ratio `qm` from particles to the `rho` field on the grid, and gathers back the electric field `efield` to the particle positions:
 
 ```cpp
-scatter(qm, rho, this->R);
-gather(this->E, efield, this->R);
+scatter(qm, rho, bunch.R);
+gather(bunch.E, efield, bunch.R);
 ```
 
-The first call deposits a particle attribute onto a scalar mesh field. The second interpolates a vector field back to particle positions.
+As can be seen, both the scatter and gather calls function for scalar fields (like `rho`)  and vector fields (like `efield`).
 
 ## CIC weights and conservation
 
@@ -44,15 +31,17 @@ For each particle, CIC computes lower and upper interpolation weights in every d
 Kokkos::atomic_add(&field(...), particleValue * weightProduct);
 ```
 
-Gather computes the weighted sum of the same neighboring mesh points. The particle gather/scatter tests document three important contracts:
+Gather computes the weighted sum of the same neighboring mesh points.
 
-| Test behavior | Contract |
+The particle gather/scatter tests verify the following operations:
+
+| Test | Expected behaviour |
 |---|---|
-| gather from constant field | interpolation of a constant field returns that constant. |
-| gather with `addToAttribute = true` | gathered values can either replace or increment an attribute. |
-| scatter all particles | total field charge equals total particle charge. |
-| scatter with custom range | a subset of local particles can be deposited. |
-| scatter with custom hash | particles can be deposited through a remapped index list. |
+| Gather from constant field | Interpolation of a constant field returns that constant. |
+| Gather with `addToAttribute = false/true` | Gathered values can either replace or increment an attribute. |
+| Scatter all charged particles | Total field charge equals total particle charge. |
+| Scatter with custom range | A subset of local particles can be deposited. |
+| Scatter with custom hash | Particles can be deposited through a remapped index list. |
 
 Typical calls:
 
@@ -63,7 +52,7 @@ double totalField = field.sum();
 double totalParticles = bunch.Q.sum();
 
 gather(bunch.Q, field, bunch.R);
-gather(bunch.Q, field, bunch.R, true); // add to current attribute
+gather(bunch.Q, field, bunch.R, true); // addToAttribute=true
 ```
 
 ## PIC test loop
@@ -80,17 +69,18 @@ The `PICnd` test exercises the following end-to-end sequence:
 8. Advance particle velocity and position.
 9. Repeat migration and conservation checks.
 
-The time loop in `PICnd` has the canonical PIC shape:
+The time loop in `PICnd` has the canonical PIC shape (in the electrostatic case):
 
 ```cpp
-P->R = P->R + dt * P->P;
-P->update();
+bunch->R = bunch->R + dt * bunch->P;
+bunch->update();
 
-P->scatterCIC(totalP, it + 1);
-P->gatherCIC();
+bunch->scatterCIC();
+bunch->gatherCIC();
 
-P->P = P->P + dt * P->qm * P->E;
+bunch->P = bunch->P + dt * bunch->qm * bunch->E;
 ```
+The position is updated using the particle velocities, then update is called to make sure particles are in the correct rank. Then, we call scatterCIC to scatter from particles to grid using CIC interpolation. This would be followed by a solve step to solve for the electric field using the charge density, in the case of an electrostatic PIC simulation. However, this step is skipped in this test, since it seeks to test only the interpolation. Next, the gatherCIC interpolates the electric field back to particle positions, populating `bunch->E`. Finally, the velocities are updated using the computed electric field and the charge-to-mass ratio (electrostatic Lorentz force). 
 
 `scatterCIC` resets the mesh field, deposits charge, reduces the total particle count, and checks charge conservation:
 
@@ -100,25 +90,26 @@ scatter(qm, EFDMag_m, this->R);
 
 double Q_grid = EFDMag_m.sum();
 ippl::Comm->reduce(&local_particles, &Total_particles, 1, std::plus<unsigned int>());
+double rel_error = std::fabs((this->Q_m - Q_grid) / this->Q_m);
 ```
 
-This is the right level of example for user documentation because it uses IPPL abstractions without hiding the data movement.
-
-Its default command shape is:
+The `PICnd` test can be run using the following command line shape: 
 
 ```bash
 srun ./PICnd 128 128 128 10000 10 --info 10
 ```
+where the first three arguments are grid sizes (in 3D), followed by total particle count and number of time steps. In the above case, we are running a $128^3$ grid size with 10000 particles for 10 time steps. 
 
-where the first three arguments are grid sizes, followed by total particle count and number of time steps.
+## Load balancing
 
-## Load balancing hook
-
-`PICnd` also shows a first load-balancing pattern. It initializes an `OrthogonalRecursiveBisection` object from the field layout, mesh, and field magnitude, then optionally repartitions:
+`PICnd` also shows a first load-balancing pattern. It initializes an `OrthogonalRecursiveBisection` object using the field layout, mesh, and field magnitude. During the simulation, the domain can be repartitioned according to the particle positions:
 
 ```cpp
 orb.initialize(fl, mesh, EFDMag_m);
-bool changed = orb.binaryRepartition(this->R, fl, fromAnalyticDensity);
+
+...
+
+bool changed = orb.binaryRepartition(this->R, fl);
 if (changed) {
     this->updateLayout(fl, mesh);
 }
@@ -127,6 +118,8 @@ if (changed) {
 The important user contract is that field layouts, local fields, and particle layouts must be updated together after repartitioning.
 
 ## First examples to document
+
+TODO
 
 - `test/particle/PICnd.cpp` for a compact PIC test.
 - `alpine/LandauDamping.cpp` and ALPINE managers for production-style mini-apps.

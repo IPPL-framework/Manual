@@ -1,6 +1,6 @@
 # Performance Portability {#sec-performance-portability}
 
-IPPL's portability model is based on Kokkos execution and memory spaces, MPI for distributed memory, and optional HeFFTe FFT backends. Tests are instantiated over precision, dimension, and execution spaces to catch portability errors early.
+IPPL's portability model is based on Kokkos execution and memory spaces, MPI for distributed memory, and optional HeFFTe FFT backends. The same algorithmic code path is intended to run across CPU and GPU systems with only compile-time type selection and runtime parameter choices.
 
 ## Themes
 
@@ -10,7 +10,102 @@ IPPL's portability model is based on Kokkos execution and memory spaces, MPI for
 - GPU-aware MPI and backend-specific FFT support.
 - Explicit synchronization with `ippl::fence()` when required.
 
+## Portability stack
+
+```{mermaid}
+flowchart TB
+  App["User app / mini-app"] --> IPPL["IPPL abstractions"]
+  IPPL --> Kernels["Kokkos kernels and views"]
+  IPPL --> Comm["MPI communication"]
+  IPPL --> FFT["HeFFTe FFT backend (optional)"]
+  Kernels --> HW["CPU / GPU hardware"]
+  Comm --> HW
+  FFT --> HW
+```
+
+## What is portable in IPPL
+
+| Layer | Portability contract |
+|---|---|
+| Domain and indexing | `Index` and `NDIndex` define dimension-independent ranges used identically on all backends. |
+| Distributed ownership | `FieldLayout` and particle layouts encode decomposition and migration independent of target architecture. |
+| Data containers | `Field`, `ParticleAttrib`, and solver vectors store data in Kokkos-backed memory spaces. |
+| Kernel execution | Device/host execution is selected through Kokkos execution spaces and template instantiations. |
+| FFT and communication | HeFFTe options (`use_pencils`, `comm`, `use_gpu_aware`) and MPI collectives tune reshapes and data motion. |
+
+## Performance themes from production workflows
+
+### 1) Dimension-independence
+
+Most IPPL data structures and algorithms are parameterized by `Dim` and used from 1D through 6D. This reduces duplicated implementations and keeps feature behavior consistent between test and production geometries.
+
+### 2) Mixed precision
+
+IPPL supports `float` and `double` and mixed-precision workflows where memory-heavy arrays use lower precision while sensitive reductions or diagnostics remain in higher precision. In PIC workflows this can substantially reduce memory footprint for large runs.
+
+### 3) Mixed execution spaces
+
+Fields, particles, and solver operations can execute in different execution spaces where supported by the selected build and data movement contracts. The main requirement is that ownership and synchronization boundaries are explicit.
+
+### 4) Communication and FFT tuning
+
+The FFT-based solvers expose backend controls through `ParameterList`, including:
+
+```cpp
+params.add("use_pencils", true);
+params.add("use_reorder", false);
+params.add("use_gpu_aware", true);
+params.add("comm", ippl::a2av);
+params.add("r2c_direction", 0);
+```
+
+These options map to different communication/reshape strategies in HeFFTe-based transforms and can change scaling behavior significantly on large systems.
+
+## Architecture-sensitive bottlenecks
+
+For particle-mesh simulations, the dominant costs usually come from one or more of:
+
+- particle migration and communication imbalance,
+- scatter/gather atomics and memory traffic,
+- FFT reshape communication and transpose cost,
+- solver iteration count (for CG/PCG/FEM paths),
+- host-device synchronization points.
+
+Because bottlenecks shift by problem size and machine, the manual recommends workflow-level profiling first, then backend-specific tuning.
+
+## Practical tuning checklist
+
+1. **Start with correctness:** verify conservation and solver residual behavior before any tuning.
+2. **Pick decomposition shape:** evaluate pencil vs slab FFT decomposition for your rank topology.
+3. **Evaluate communication mode:** compare `a2a`, `a2av`, and supported peer-to-peer reshape modes.
+4. **Check GPU-aware transfer path:** keep `use_gpu_aware` aligned with system MPI capabilities.
+5. **Track memory high-water marks:** memory pressure often dominates GPU runs before arithmetic throughput.
+6. **Tune solver tolerances/iterations:** overly strict defaults can hide communication/kernel improvements.
+
+## Measuring performance
+
+At minimum, report:
+
+| Metric | Why it matters |
+|---|---|
+| Time per PIC iteration | End-to-end throughput metric for production runs. |
+| Solver-only time | Separates field solve performance from particle operations. |
+| Strong scaling efficiency | Indicates communication and synchronization overhead growth. |
+| Weak scaling efficiency | Indicates per-rank work consistency with growth. |
+| Memory high-water mark | Critical on GPUs with limited memory capacity. |
+| Iteration count / residual (iterative solvers) | Distinguishes numerical from implementation regressions. |
+
+For FFT-heavy solvers, include decomposition and communication settings alongside timing results so runs are reproducible.
+
+## Relationship to solver chapters
+
+- @sec-poisson-solvers documents FFT and iterative Poisson paths and their parameters.
+- @sec-maxwell-solvers covers FDTD and FEM Maxwell diffusion workflows.
+- @sec-fem covers matrix-free finite-element spaces and operator application contracts.
+
+This chapter focuses on portability and scaling behavior across those components rather than repeating solver derivations.
+
 ## Benchmark references
 
-The ALPINE/IPPL mini-app study documents particle-in-cell scaling and performance portability on pre-exascale systems [@muralikrishnan2024scalingPicMiniapps]. The free-space spectral Poisson solver paper documents CPU/GPU scaling of solver kernels and FFT-heavy workloads [@mayani2025freeSpacePoisson].
+The ALPINE/IPPL mini-app study documents particle-in-cell scaling and performance portability on pre-exascale systems [@muralikrishnan2024scalingPicMiniapps]. The free-space spectral Poisson solver paper documents CPU/GPU scaling of solver kernels and FFT-heavy workloads [@mayani2025freeSpacePoisson]. The PhD thesis extends these themes with massively parallel free-space Poisson and matrix-free FEM solver development and analysis in IPPL [@mayani2026massivelyParallelPhd].
 

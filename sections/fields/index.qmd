@@ -2,6 +2,8 @@
 
 Fields are distributed mesh data structures. They combine value type, dimension, mesh, layout, and execution space into a single object that supports assignment, expressions, reductions, halo exchange, and boundary conditions.
 
+Fields constitute the Eulerian half of Particle-in-Cell methods, since they store values on a grid. 
+
 ## Main classes
 
 | Class | Role |
