@@ -1,0 +1,219 @@
+# ALPINE Manager Hierarchy {#sec-alpine-manager-hierarchy}
+
+Source focus: `alpine/LandauDamping.cpp`, `alpine/LandauDampingManager.h`, `alpine/AlpineManager.h`, `src/Manager/BaseManager.h`, and `src/Manager/PicManager.h`.
+
+The `alpine` directory contains production-style miniapps that use IPPL as an application framework rather than as isolated library calls. The Landau damping miniapp is the most compact example of this style: the executable parses command-line parameters, constructs a manager, calls `pre_run()`, and delegates the simulation loop to the generic manager interface. Read this page together with @sec-theory for the Vlasov--Poisson/PIC model and @sec-particle-mesh for interpolation and load-balancing concepts.
+
+## Design intent
+
+The manager hierarchy separates three concerns:
+
+1. **Simulation lifecycle**: when setup, time stepping, and post-step diagnostics occur.
+2. **PIC data ownership**: where particle, field, solver, and load-balancer objects live.
+3. **Problem physics**: how Landau damping initializes particles and advances the Vlasov--Poisson system.
+
+This separation is useful for library users because the Landau miniapp shows which pieces must be supplied for a new PIC application. It is useful for library developers because the same interfaces expose where to add new solvers, interpolation methods, diagnostics, or load-balancing policies.
+
+## Class hierarchy
+
+```{mermaid}
+classDiagram
+    direction TB
+
+    class BaseManager {
+      +pre_run()
+      +pre_step()
+      +advance()*
+      +post_step()
+      +run(int nt)
+    }
+
+    class PicManager~T, Dim, pc, fc, orb~ {
+      +par2grid()*
+      +grid2par()*
+      +setParticleContainer(pc)
+      +setFieldContainer(fc)
+      +setFieldSolver(FieldSolverBase)
+      +setLoadBalancer(orb)
+    }
+
+    class AlpineManager~T, Dim~ {
+      +grid2par()
+      +par2grid()
+      +gatherCIC()
+      +scatterCIC()
+      +gatherFEM()
+      +scatterFEM()
+      +post_step()
+      +dump()
+    }
+
+    class LandauDampingManager~T, Dim~ {
+      +pre_run()
+      +initializeParticles()
+      +advance()
+      +LeapFrogStep()
+      +dump()
+    }
+
+    BaseManager <|-- PicManager
+    PicManager <|-- AlpineManager
+    AlpineManager <|-- LandauDampingManager
+```
+
+`BaseManager` defines the lifecycle contract. Its `run(nt)` method calls `pre_step()`, `advance()`, and `post_step()` for each time step. `PicManager` specializes this contract for particle-in-cell applications by requiring `par2grid()` and `grid2par()` and by owning the containers and services that a PIC loop needs. `AlpineManager` provides the common ALPINE implementation of particle-field transfers, charge conservation checks, density normalization, and default post-step time/diagnostic handling. `LandauDampingManager` supplies the application-specific setup, particle sampling, Leapfrog integrator, and Landau diagnostics. This makes the manager stack a concrete bridge between the high-level PIC loop in @sec-particle-mesh and the performance-portable execution model in @sec-performance-portability.
+
+## Object ownership
+
+```{mermaid}
+classDiagram
+    direction LR
+
+    class LandauDampingManager
+    class FieldContainer {
+      E
+      rho
+      phi
+      mesh
+      FieldLayout
+    }
+    class ParticleContainer {
+      R
+      P
+      E
+      q
+      ParticleSpatialLayout
+    }
+    class FieldSolver {
+      FFT
+      CG
+      PCG
+      FEM
+      FEM_PRECON
+    }
+    class LoadBalancer {
+      ORB repartition
+      balance threshold
+    }
+
+    LandauDampingManager *-- FieldContainer
+    LandauDampingManager *-- ParticleContainer
+    LandauDampingManager *-- FieldSolver
+    LandauDampingManager *-- LoadBalancer
+    ParticleContainer --> FieldContainer : layout from mesh + field layout
+    FieldSolver --> FieldContainer : solves rho -> phi,E
+    LoadBalancer --> FieldContainer
+    LoadBalancer --> ParticleContainer
+    LoadBalancer --> FieldSolver
+```
+
+The manager owns shared pointers to these components through `PicManager`. During `pre_run()`, `LandauDampingManager` creates them in dependency order:
+
+| Step | Object or operation | Role in the miniapp |
+|---|---|---|
+| 1 | Domain, spacing, time step, total charge | Defines the periodic Landau damping problem and numerical resolution. |
+| 2 | `FieldContainer` | Allocates the mesh, `FieldLayout`, electric field `E`, charge density `rho`, and potential `phi` when required by the selected solver. |
+| 3 | `ParticleContainer` | Builds the particle spatial layout from the field mesh/layout and registers charge `q`, velocity `P`, and gathered electric field `E`. |
+| 4 | `FieldSolver` | Selects FFT, CG, PCG, FEM, or preconditioned FEM solve paths behind the `FieldSolverBase` interface; the generic ALPINE solver also has open-boundary variants, but Landau damping rejects `OPEN` because the problem is periodic. |
+| 5 | `LoadBalancer` | Couples ORB repartitioning to the current fields, particles, and solver. |
+| 6 | `initializeParticles()` | Samples perturbed Landau positions and Maxwellian velocities, assigns charge, and optionally performs the initial FEM migration. |
+
+## Runtime lifecycle
+
+```{mermaid}
+sequenceDiagram
+    participant main as LandauDamping.cpp
+    participant mgr as LandauDampingManager
+    participant alpine as AlpineManager
+    participant pic as PicManager/BaseManager
+    participant fs as FieldSolver
+    participant lb as LoadBalancer
+
+    main->>mgr: construct(totalP, nt, nr, lbt, solver, step)
+    main->>mgr: pre_run()
+    mgr->>mgr: create containers and initialize particles
+    mgr->>fs: warm-up solve
+    mgr->>alpine: par2grid()
+    mgr->>fs: runSolver()
+    mgr->>alpine: grid2par()
+    mgr->>mgr: dump()
+    main->>pic: run(nt)
+    loop each time step
+      pic->>alpine: pre_step()
+      pic->>mgr: advance()
+      mgr->>mgr: push velocity half-step
+      mgr->>mgr: push position
+      mgr->>mgr: particle update/migration
+      mgr->>lb: balance() and repartition() if needed
+      mgr->>alpine: par2grid()
+      mgr->>fs: runSolver()
+      mgr->>alpine: grid2par()
+      mgr->>mgr: push velocity half-step
+      pic->>alpine: post_step()
+    end
+```
+
+The important design point is that `main()` does not know the details of particle migration, charge scatter, field solution, or diagnostics. Those details are encoded in the manager hierarchy, so a new miniapp can reuse the lifecycle while replacing only the physics-specific manager methods.
+
+## Particle--field transfer policy
+
+`AlpineManager` is the point where the solver choice changes the interpolation path. The path is not only a software switch: it also determines whether the field quantities are cell-centered mesh fields or finite-element quantities reconstructed through the solver's space.
+
+| Manager method | FFT/CG/PCG path | FEM/FEM_PRECON path |
+|---|---|---|
+| `par2grid()` | `scatterCIC()` scatters particle charge to cell-centered `rho`. | `scatterFEM()` assembles the finite-element right-hand side from particles. |
+| `grid2par()` | `gatherCIC()` gathers grid electric field `E` to particle positions. | `gatherFEM()` interpolates the gradient of `phi` to particles using the solver's finite-element space. |
+| Density normalization | Divides by cell volume and subtracts the uniform ion background for non-open solvers. | Uses the assembled finite-element quantity and the same periodic background convention. |
+
+This is the local extension point for interpolation and deposition. A new solver can remain behind `FieldSolverBase`, but if it changes the mathematical meaning, centering, or finite-element space of the field quantities, the manager transfer methods must make that explicit.
+
+## Solver and command-line notes
+
+The Landau executable is currently fixed to `Dim = 3` and `T = double`. Its solver argument is passed through to `FieldSolver`, but `LandauDampingManager::pre_run()` explicitly rejects `OPEN` because open boundaries are incompatible with this periodic benchmark. The practical Landau choices are:
+
+| Solver argument | Meaning in this miniapp |
+|---|---|
+| `FFT` | Periodic FFT Poisson solve, returning the electric-field gradient directly. |
+| `CG` | Matrix-free conjugate-gradient Poisson solve with periodic potential boundary conditions. |
+| `PCG` | Preconditioned CG path; the executable currently reads a fixed five-token preconditioner block. |
+| `FEM` | Finite-element Poisson solve; `rho` and `phi` are periodic fields and transfers use FEM assembly/interpolation. |
+| `FEM_PRECON` | Preconditioned finite-element path with the same fixed preconditioner argument convention as `PCG`. |
+
+The current parser consumes five strings after `PCG` or `FEM_PRECON`, even though some preconditioners use fewer parameters. For example, `ssor inner outer omega` uses three values after the preconditioner name, so a padding token is still needed before IPPL options such as `--overallocate`.
+
+## LandauDamping-specific behavior
+
+`LandauDampingManager` provides the physics specialization:
+
+- The domain is periodic with \(r_\min=0\), \(r_\max=2\pi/k_w\), perturbation amplitude \(\alpha=0.05\), and \(k_w=0.5\).
+- Particle positions are sampled from \(1+\alpha\cos(k_w x)\) through inverse-transform sampling.
+- Particle velocities are sampled from a normal distribution.
+- The total particle charge is distributed uniformly over macro-particles.
+- The time step is chosen from the grid spacing as `min(0.05, 0.5 * min(hr))`.
+- The only accepted time stepper in this miniapp is `LeapFrog`.
+
+The Leapfrog step is the standard PIC cycle:
+
+1. Kick particle velocities by a half step using the gathered electric field.
+2. Drift particle positions.
+3. Migrate particles to the owning ranks through `ParticleBase::update()`.
+4. Repartition the field layout and particle layout with ORB if the load-balancer threshold is exceeded.
+5. Scatter charge to the grid.
+6. Solve the field equation.
+7. Gather electric field back to particles.
+8. Kick particle velocities by the second half step.
+
+## How to read or extend this miniapp
+
+For a new ALPINE-style PIC miniapp, use Landau damping as the template:
+
+| If you need to change... | Start in... | Typical change |
+|---|---|---|
+| The problem setup | `LandauDampingManager::pre_run()` | Domain, boundary assumptions, solver parameters, initial fields. |
+| Initial particle distribution | `initializeParticles()` | Position PDF/CDF, velocity distribution, charge or weights. |
+| Time integration | `advance()` and `LeapFrogStep()` | Replace or add a time stepper while preserving particle migration and field solve ordering. |
+| Particle-field transfer | `AlpineManager::par2grid()` and `grid2par()` | Add a deposition/interpolation method or solver-specific transfer path, with centering and conservation documented. |
+| Diagnostics | `dump()` and `dumpLandau()` | Add conserved quantities, spectra, field norms, or particle statistics. |
+| Load balancing | `LoadBalancer` and the `balance()` call site | Adjust thresholds, repartition cadence, or ORB policy. |
+
+Keep physics-facing changes explicit: document whether the change affects charge conservation, interpolation order, field centering, floating-point reproducibility, or MPI/GPU execution order.

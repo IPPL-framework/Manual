@@ -2,8 +2,6 @@
 
 IPPL is configured with CMake. A minimal build needs a C++20 compiler, MPI, and Kokkos. FFT and solver chapters require builds with `IPPL_ENABLE_FFT=ON` and usually `IPPL_ENABLE_SOLVERS=ON`, but the first program does not need that stack.
 
-For browser-based experiments, use the local runner workflow in @sec-playground. It keeps the manual open while compilation and execution happen in a Docker container on the user's machine.
-
 ## Minimal program
 
 ```cpp
@@ -22,19 +20,6 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 ```
-
-## Try it in the browser
-
-The fastest first experiment is the browser playground in @sec-playground. Keep this manual open, build the local Docker runner once, paste the token printed by the runner, then edit, compile, run, inspect stdout, and edit again.
-
-```bash
-git clone --depth 1 --branch ippl-container https://github.com/IPPL-framework/ippl.git
-cd ippl
-docker build -t ippl-runner:local -f tools/browser-runner/Dockerfile .
-docker run --rm -p 127.0.0.1:5050:5050 ippl-runner:local
-```
-
-The runner image contains a CPU-only IPPL installation. It is intentionally scoped to short one-file examples, with no FFT, solver, or GPU stack.
 
 ## Compile a small IPPL program
 
