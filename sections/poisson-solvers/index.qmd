@@ -106,7 +106,7 @@ $$
 $$
 This is also known as the 3-point stencil. In the 2D case, this becomes a 5 point stencil, while in the 3D case, it becomes a 7D stencil. 
 
-When applying this to every grid point of the field, we obtain a linear system of equations of type $A \mathbf{\phi} = \matbf{\rho}$, where $A$ is an $n\times n$ sized matrix:
+When applying this to every grid point of the field, we obtain a linear system of equations of type $A \mathbf{\phi} = \mathbf{\rho}$, where $A$ is an $n\times n$ sized matrix:
 $$
 \underbrace{\frac{1}{\Delta x^2}\begin{bmatrix}
         2 & -1 &  \\
