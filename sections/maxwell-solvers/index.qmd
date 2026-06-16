@@ -1,8 +1,33 @@
 # Maxwell Solvers {#sec-maxwell-solvers}
 
-Maxwell solver support covers finite-difference time-domain and finite-element diffusion-oriented formulations.
+While Poisson solvers are appropriate for many use cases of \ac{pic} codes—for example for computation of Coulomb forces between particles in particle accelerator beams (known as space charge)—certain phenomena, such as laser interactions with plasma \cite{birdsallPlasmaPhysicsComputer2018}, are only captured with full electromagnetic simulations. This results in \ac{empic} and requires Maxwell field solvers [@mayani2026massivelyParallelPhd].
 
-The thesis context is useful here: electrostatic PIC can be handled by Poisson solves, but full electromagnetic PIC requires Maxwell solvers together with charge-conserving interpolation to maintain physical constraints consistently [@mayani2026massivelyParallelPhd].
+To simulate an electromagnetic system, one needs to solve the Maxwell equations:
+$$
+\mathbf{\nabla}\cross\mathbf{E} &= -\frac{\partial \mathbf{B}}{\partial t}, \\
+\mathbf{\nabla}\cross\mathbf{B} &= \mu_0 \mathbf{J} + \mu_0\epsilon_0 \frac{\partial \mathbf{E}}{\partial t}, \\
+\mathbf{\nabla}\cdot\mathbf{E} &= \frac{\rho}{\epsilon_0}, \\
+\mathbf{\nabla}\cdot\mathbf{B}  &= 0, 
+$$
+
+The last two equations are automatically satisfied if an appropriate charge-conserving interpolation scheme is chosen to scatter and gather the charge density $\rho$, the current $\mathbf{J}$, and the fields $\mathbf{E}$ and $\mathbf{B}$ in the context of the Particle-in-Cell method. Therefore, Maxwell solvers need only solve the first two equations. 
+
+Maxwell solvers in IPPL are implemented in `src/MaxwellSolvers`.
+
+The standard method is to use finite differences, in space and in time (as both space and time appear in the equations). This is known as the Finite Difference Time Domain scheme. This is implemented in IPPL as `StandardFDTDSolver`, a derived class from the `Maxwell` base class. The non-standard flavour of the FDTD scheme, which seeks to reduce dispersive effects (especially useful in accelerator modelling when one wants to reduce dispersion in the beam propagation direction, for example in free elelectron lasers), is implemented in the class `NonStandardFDTDSolver`. More information on these numerical methods can be found in [@mithra2020]. 
+
+Furthermore, one can also use FEM as a solver for the Maxwell equations, giving rise to a method known as Finite Element Time Domain (FETD). However, using FEM for electromagnetism requires special Finite Element spaces in order to represent the electric and magnetic fields in order to conform to the physics. These are the Nédélec and Raviart-Thomas spaces, which represent the electric and magnetic fields, respectively. 
+
+A first-order Nédélec space is already available in the FEM framework of IPPL, while work on other spaces is ongoing. Therefore, for now we may only represent electric fields in Finite Elements. A `FEMMaxwellDiffusionSolver` using the Nédélec space has been implemented, which solves the following PDE in the domain $\Omega$, with zero Dirichlet boundary conditions:
+$$
+\nabla \times \nabla \times \mathbf{u}(\mathbf{x}) + \mathbf{u}(\mathbf{x}) &= \mathbf{g}(\mathbf{x}) \text{ in } \Omega,\\
+\mathbf{u}(\mathbf{x}) \times \mathbf{n} &= \mathbf{0}  \text{ on } \partial \Omega\text{,}
+$$
+where $g(\mathbf{x})$ is the source function, $u(\mathbf{x})$ the solution we seek, and $\mathbf{n}$ the normal of the domain pointing outwards. This second-order definite Maxwell equation represents the electromagnetic diffusion problem. The operator $\nabla \times \nabla \times$ is known as the curl-curl operator.
+
+This `FEMMaxwellDiffusionSolver` also inherits from the `Maxwell` base class.
+
+The following class diagram shows the structure of the `src/MaxwellSolvers` directory:
 
 ```{mermaid}
 classDiagram
@@ -37,26 +62,18 @@ classDiagram
 
 | Class | Role |
 |---|---|
-| `FDTDSolverBase` | Base class for FDTD solvers, field history, time step, and boundary handling. |
+| `Maxwell` | Parent class for all Maxwell solvers, with shared definitions. |
+| `FDTDSolverBase` | Base class for FDTD solvers, with field history, time step, and boundary handling. |
 | `StandardFDTDSolver` | Standard FDTD implementation. |
 | `NonStandardFDTDSolver` | Non-standard FDTD implementation with nondispersive coefficients. |
-| `AbsorbingBC` | Absorbing boundary support. |
-| `FEMMaxwellDiffusionSolver` | Nedelec FEM solver for Maxwell diffusion problems. |
-| `Maxwell` | Shared Maxwell solver definitions. |
+| `AbsorbingBC` | Absorbing boundary condition support. |
+| `FEMMaxwellDiffusionSolver` | Nédélec FEM solver for Maxwell diffusion problems. |
 
-## FDTD solver lifecycle
+## FDTD solver
 
-`FDTDSolverBase` stores the electromagnetic source, electric and magnetic fields, the vector-potential time history `A_nm1`, `A_n`, and `A_np1`, plus the mesh, layout, domain, grid spacing, and time step. Concrete solvers implement `initialize()` and `step()`.
+The FDTD solver is based on the potential formulation of the Maxwell equations, $\phi-\mathbf{A}$. The source field is a four-component vector potential history (`A_nm1`, `A_n`, `A_np1`); electric and magnetic fields are derived from it through `evaluate_EB()` after each step.
 
-```{mermaid}
-flowchart TD
-  Init["initialize()"] --> Solve["solve()"]
-  Solve --> Step["step()"]
-  Step --> BC["applyBCs()"]
-  BC --> Eval["evaluate_EB()"]
-  Eval --> Shift["timeShift()"]
-  Shift --> Step
-```
+`FDTDSolverBase` stores the electromagnetic source, electric and magnetic fields, the vector-potential time history `A_nm1`, `A_n`, and `A_np1`, plus the mesh, layout, domain, grid spacing, and time step. At each step, the history is used to compute the potentials at the next time-step, then the electric and magnetic fields are evaluated, and the history is rewritten to store the new time-step. Two previous time-steps need to be saved in order to be able to use centered finite differences for the time discretization. 
 
 The boundary-condition enum currently exposes:
 
@@ -65,43 +82,114 @@ The boundary-condition enum currently exposes:
 | `fdtd_bc::periodic` | Periodic electromagnetic boundary. |
 | `fdtd_bc::absorbing` | Absorbing boundary treatment. |
 
-Manual examples should state the field layout, grid spacing, time step, source convention, and boundary tuple explicitly before showing solver construction.
 
-## Standard and non-standard FDTD
+## FEMMaxwellDiffusionSolver
 
-`StandardFDTDSolver` is the baseline time-domain solver. It is the right starting point for users who want the canonical FDTD setup and for developers who need to compare changes against a simple reference implementation.
+The `FEMMaxwellDiffusionSolver` takes as input a right-hand side ($\mathbf{g}$ in the diffusion equation), and solves the curl-curl equation with it. Inspired by the `FEMPoissonSolver`, it uses a matrix-free approach with the PCG iterative solver in order to solve the finite element system. Since there is no time-dependence in this PDE, no time discretization or history is needed.
 
-`NonStandardFDTDSolver` adds nondispersive coefficients `a1`, `a2`, `a4`, `a6`, and `a8`. The source mentions Taflove-style FDTD references and MITHRA 2.0; the manual should keep the numerical derivation brief and link to the implementation and publications for details.
+Currently, it only supports zero boundary conditions. 
 
-### FDTD method notes
+## Minimal working example with FDTDSolver
 
-In the Yee-style formulation, electric and magnetic components are staggered in space and time so centered finite differences can be used for curl operators. This gives a second-order scheme and good locality for parallel execution. The same thesis discussion also highlights known limitations: numerical dispersion and CFL-limited time step size, which can become expensive for long/high-resolution runs [@mayani2026massivelyParallelPhd].
+```cpp
+SourceField source(mesh, layout);
+EMField E(mesh, layout);
+EMField B(mesh, layout);
+source = vector4_type(0);
 
-## FEM Maxwell diffusion
+ippl::StandardFDTDSolver<EMField, SourceField, ippl::periodic> solver(source, E, B);
 
-`FEMMaxwellDiffusionSolver` solves the model problem
+// initialize the source (initial conditions), and apply boundary conditions
+...
+
+// time loop
+for (size_t s = 0; s < 1. / solver.getDt(); ++s) {
+    solver.solve();  // does the FDTD time-stepping
+}
+```
+
+## Tests
+
+The tests for the FDTD solver can be found in `test/maxwell`. The FEM-based `FEMMaxwellDiffusionSolver` is tested in `test/solver/fem`.
+
+### FDTD Solver tests
+
+`StandardFDTDSolver` advances the vector-potential history on a uniform Cartesian mesh. `test/maxwell/TestStandardFDTDSolver.cpp` places a Gaussian pulse on the unit cube $[0,1]^3$, evolves it for one physical second with periodic boundaries, and checks that the pulse returns to its initial profile after one period.
+
+The solver constructor calls `initialize()`, which sets $\Delta t = \min_d (\Delta x_d / 2)$ and configures periodic boundary conditions. The source field stores four components per grid point ($\phi$ and the three components of $\mathbf{A}$); indices $1$–$3$ hold $A_x$, $A_y$, and $A_z$. Both `A_n` and `A_nm1` must be filled before the first step because the time derivative uses a centered difference.
+
+Each call to `solve()` advances the vector potential by one time step, shifts the history (`A_nm1` $\leftarrow$ `A_n` $\leftarrow$ `A_np1`), and updates `E` and `B` through `evaluate_EB()`. The full test also writes BMP snapshots and reports the normalized $L_2$ error against the initial pulse.
+
+**Standard vs. non-standard grids.** `StandardFDTDSolver` tests use an isotropic grid with $n$ points per direction. `NonStandardFDTDSolver` tests use an anisotropic grid with $(n/2, n/2, 2n)$ points in $(x,y,z)$ to exercise the nondispersive update coefficients.
+
+#### Image-output tests
+
+`TestStandardFDTDSolver` and `TestNonStandardFDTDSolver` evolve a Gaussian pulse for one second and write BMP snapshots every fourth step.
+
+| Executable | Output directory | Default pulse direction |
+|---|---|---|
+| `TestStandardFDTDSolver` | `renderdataStandard/` | $z$ |
+| `TestNonStandardFDTDSolver` | `renderdataNonStandard/` | $z$ |
+
+Create the output folders before running:
+
+```bash
+mkdir -p renderdataStandard renderdataNonStandard
+../../bin/TestStandardFDTDSolver
+../../bin/TestNonStandardFDTDSolver
+```
+
+Each run prints the final normalized $L_2$ error to stdout. Images are written as `outimageXXXXX.bmp` (vector potential) and `E_outimageXXXXX.bmp` (electric field).
+
+#### Convergence tests
+
+`TestStandardFDTDSolver_convergence` and `TestNonStandardFDTDSolver_convergence` sweep grid sizes
 
 $$
-\nabla \times \nabla \times E + E = f,
-\qquad n \times E = 0.
+N \in \{4, 8, 16, 32, 64, 128, 256\}
 $$
 
-It uses `NedelecSpace`, `FEMVector`, and a preconditioned conjugate-gradient solve. The default parameter values are `max_iterations = 10` and `tolerance = 1e-13`, and users can query `getIterationCount()` and `getResidue()` after a solve. The class also provides `reconstructToPoints()` and `getL2Error()` for verification workflows.
+and pulse directions $x$, $y$, and $z$. They write CSV files:
 
-### Why Nedelec space is used
+- `StandardFDTDSolver_convergence.csv`
+- `NonStandardFDTDSolver_convergence.csv`
 
-For Maxwell-type problems, `H(curl)` conformity is required for electric fields. This is why the implementation is built on `NedelecSpace` rather than nodal `H1` spaces: it enforces the correct tangential continuity structure and avoids artifacts associated with incompatible spaces in curl-curl formulations [@mayani2026massivelyParallelPhd].
+with columns `GaussianPulseDir`, `NGridpoints`, and `ConverganceError`. A short plotting script is included in `test/maxwell/README.md`.
 
-### Current scope
+### FEM Maxwell diffusion tests
 
-The existing FEM Maxwell implementation in IPPL is a diffusion-model solver (`curl curl + mass` form). A full FETD pipeline for time-domain EM-PIC additionally needs compatible magnetic-field spaces and time integration orchestration.
+These integration tests solve the vector diffusion problem
 
-## Tests to document first
+$$
+\nabla \times \nabla \times \mathbf{E} + \mathbf{E} = \mathbf{f}, \qquad \mathbf{n} \times \mathbf{E} = \mathbf{0} \text{ on } \partial\Omega,
+$$
 
-This chapter should state field staggering, boundary condition conventions, stability constraints, and the exact assumptions used in the convergence tests under `test/maxwell`.
+on structured meshes with first-order Nedelec elements, homogeneous zero tangential boundary conditions (`ZeroFace` on all faces), and matrix-free PCG.
 
-| Test area | Manual purpose |
-|---|---|
-| FDTD tests under `test/maxwell` | Show source-field setup, time stepping, and boundary behavior. |
-| `test/solver/fem/TestMaxwellDiffusion*` | Show Nedelec FEM setup, solver parameters, and convergence checks. |
-| Unit tests for `NedelecSpace` | Validate the basis and curl operations used by FEM Maxwell diffusion. |
+| Test | Domain | Manufactured solution |
+|---|---|---|---|
+| `TestMaxwellDiffusionZeroBC` | $[1,3]^{\mathrm{dim}}$ | Sinusoidal field with $k=\pi$ |
+| `TestMaxwellDiffusionPolyZeroBC` | $[-1,1]^{\mathrm{dim}}$ | Polynomial product fields |
+| `TestMaxwellDiffusionPolyZeroBCTimed` | $[-1,1]^{\mathrm{dim}}$ | Same as polynomial test, used for scaling and wall-clock timing study (contains IPPL timers) |
+
+All three tests support 2D and 3D.
+
+**Sinusoidal case (`TestMaxwellDiffusionZeroBC`).** In 2D the exact field is $\mathbf{E} = (\sin(ky), \sin(kx))$ with corresponding RHS $\mathbf{f} = (1+k^2)\sin(ky), (1+k^2)\sin(kx)$. In 3D each component is a product of two sines and the RHS uses $(1+2k^2)$ as the scaling factor.
+
+**Polynomial case (`TestMaxwellDiffusionPolyZeroBC*`).** In 2D, $\mathbf{E} = (-(y^2-1), -(x^2-1))$. In 3D, each component is a product of two quadratic factors that vanish on the corresponding pair of faces.
+
+Run a convergence study (default) or a single grid size:
+
+```bash
+# Default refinement study in 3D: n = 16, 16*sqrt(2), ..., 1024
+./TestMaxwellDiffusionZeroBC
+./TestMaxwellDiffusionPolyZeroBC
+
+# 2D study
+./TestMaxwellDiffusionZeroBC 2
+
+# Single grid with n nodes per direction
+./TestMaxwellDiffusionZeroBC 3 64
+```
+
+`TestMaxwellDiffusionPolyZeroBCTimed` uses the same polynomial problem but prints MPI rank count and per-solve wall time; it sets `tolerance = -1` and `max_iterations = 100` to cap iterations for timing rather than tight residual control.
