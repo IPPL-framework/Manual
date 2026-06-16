@@ -1,6 +1,6 @@
 # FFT {#sec-fft}
 
-The IPPL `FFT` layer wraps scalable transforms and uses HeFFTe as the distributed backend. FFT support is optional at configure time and should be enabled with `IPPL_ENABLE_FFT=ON`.
+The IPPL `FFT` layer is a wrapper for the HeFFTe library, which provides distributed and scalable FFTs for different architectures/backends. FFT support is optional at configure time and should be enabled with `IPPL_ENABLE_FFT=ON`.
 
 ## Transform types
 
@@ -9,10 +9,10 @@ The IPPL `FFT` layer wraps scalable transforms and uses HeFFTe as the distribute
 | `CCTransform` | complex field | complex-to-complex, in-place. |
 | `RCTransform` | real input, complex output | real-to-complex and complex-to-real. |
 | `SineTransform` | real field | in-place sine transform. |
-| `CosTransform` | real field | in-place cosine transform. |
+| `CosTransform` | real field | in-place cosine type-II transform. |
 | `Cos1Transform` | real field | in-place cosine type-I transform. |
 
-`TransformDirection` is either `FORWARD` or `BACKWARD`.
+`TransformDirection` is either `FORWARD` (from real space to fourier space) or `BACKWARD` (inverse transform from fourier to real space).
 
 ## Backend selection
 
@@ -20,26 +20,26 @@ The FFT wrapper selects a HeFFTe backend from the field memory space and the con
 
 | Memory/backend condition | HeFFTe backend family |
 |---|---|
-| host with FFTW | `fftw`, `fftw_sin`, `fftw_cos`, `fftw_cos1` |
-| host with MKL | `mkl`, `mkl_sin`, `mkl_cos` |
+| Host space (CPU) with FFTW | `fftw`, `fftw_sin`, `fftw_cos`, `fftw_cos1` |
+| Host space (CPU) with MKL | `mkl`, `mkl_sin`, `mkl_cos` |
 | CUDA space | `cufft`, `cufft_sin`, `cufft_cos`, `cufft_cos1` |
 | HIP space with ROCm | `rocfft`, `rocfft_sin`, `rocfft_cos`, `rocfft_cos1` |
-| fallback host/HIP | HeFFTe stock backends |
+| Fallback host/HIP | HeFFTe stock backends |
 
 The wrapper copies owned field data without ghost layers into temporary LayoutLeft Kokkos views before calling HeFFTe. This is because HeFFTe operates on local boxes without IPPL ghost cells.
 
 ## HeFFTe parameters
 
-FFT and FFT-based solver examples use `ParameterList` keys:
+The FFT interface and FFT-based solvers use `ParameterList` keys to set HeFFTe options:
 
 | Key | Type | Meaning |
 |---|---|---|
 | `use_heffte_defaults` | `bool` | Use HeFFTe defaults instead of explicit IPPL options. |
-| `use_pencils` | `bool` | Select pencil decomposition when explicit options are used. |
+| `use_pencils` | `bool` | Select a pencil decomposition of data; otherwise slab decomposition. |
 | `use_reorder` | `bool` | Enable/disable HeFFTe reorder option. |
-| `use_gpu_aware` | `bool` | Request GPU-aware communication when supported. |
-| `comm` | `int` | Communication algorithm: `a2a`, `a2av`, `p2p`, or `p2p_pl`. |
-| `r2c_direction` | `int` | Shortened dimension for real-to-complex transforms. |
+| `use_gpu_aware` | `bool` | Request GPU-aware MPI communication when supported. |
+| `comm` | `enum` | MPI communication algorithm to be used: can be `ippl::a2a`, `ippl::a2av` , `ippl::p2p`, `ippl::p2p_pl`. |
+| `r2c_direction` | `int` | Shortened dimension for real-to-complex transforms (default is the 0th dimension, x). |
 
 The `comm` enum maps to HeFFTe reshape algorithms:
 
@@ -52,7 +52,7 @@ The `comm` enum maps to HeFFTe reshape algorithms:
 
 ## Complex-to-complex example
 
-`test/FFT/TestFFTCC.cpp` creates a complex field, applies forward and backward transforms, and checks the recovered field.
+`test/FFT/TestFFTCC.cpp` creates a complex field, applies forward and backward transforms (in-place), and checks the recovered field (it should be the same as the original field).
 
 ```cpp
 using Field_t = ippl::Field<Kokkos::complex<double>, 3, Mesh_t, Centering_t>;
@@ -68,7 +68,7 @@ fft.transform(ippl::BACKWARD, field);
 
 ## Real-to-complex example
 
-`test/FFT/TestFFTRC.cpp` uses separate input and output layouts because the complex output is shortened in one dimension.
+`test/FFT/TestFFTRC.cpp` uses separate input and output layouts because the complex output is shortened in one dimension, and cannot be done in-place.
 
 ```cpp
 ippl::ParameterList params;
@@ -103,6 +103,6 @@ fft.transform(ippl::BACKWARD, field);
 
 ## User guidance
 
-FFT-heavy applications should choose decompositions and grid sizes with the communication pattern in mind. For GPU runs, the build must align Kokkos, HeFFTe, MPI, and the device runtime.
+FFT-heavy applications should choose decompositions and communication patterns with grid sizes and node counts in mind. Optimal HeFFTe parameters are often based on heuristics.
 
-HeFFTe currently supports the IPPL transform path for 2D and 3D fields. For real-to-complex transforms, users must create compatible input and output domains. For all transforms, IPPL fields may have ghost cells, but the FFT operates on the owned region.
+HeFFTe currently supports the IPPL transform path for 2D and 3D fields. For real-to-complex transforms, users must create compatible input and output domains. For all transforms, IPPL fields may have ghost cells, but the FFT operates only on the physical domain (without ghost cells).
