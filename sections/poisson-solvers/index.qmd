@@ -1,22 +1,26 @@
 # Poisson Solvers {#sec-poisson-solvers}
 
-IPPL contains several Poisson solver paths for periodic, open, and finite-element formulations. These solvers are central for particle-mesh simulations where charge or mass density on a mesh produces electric or gravitational fields.
+IPPL provides many different methods for solving the Poisson equation:
+$$
+\Delta \phi = - \rho \text{, with appropriate boundary conditions,}
+$$
+These solvers are needed for solving electrostatic/gravitational problems, either in an isolated manner (solving for fields on a grid), or in the context of a Particle-in-Cell scheme (see @sec-theory).
+
+The available solvers are: FFT-based solvers for both periodic and free-space boundary conditions, a finite differences solver using a (Preconditioned) Conjugate Gradient iterative solver, and a Finite Element Method (FEM) based solver. 
 
 ## Main classes
 
 | Class | Role |
 |---|---|
-| `Poisson` | Common Poisson solver interface. |
-| `FFTPeriodicPoissonSolver` | FFT-based periodic solver. |
-| `FFTOpenPoissonSolver` | FFT-based open-boundary solver. |
-| `FFTTruncatedGreenPeriodicPoissonSolver` | Truncated Green function approach. |
-| `PoissonCG` | Conjugate-gradient path over field operators. |
-| `FEMPoissonSolver` | FEM-based Poisson solver. |
-| `PreconditionedFEMPoissonSolver` | FEM Poisson solver with preconditioning. |
+| `Poisson` | Common Poisson solver interface (base class). |
+| `FFTPeriodicPoissonSolver` | FFT-based periodic solver for Poisson. |
+| `FFTOpenPoissonSolver` | FFT-based open-boundary solver based on Hockney-Eastwood and a new Vico-Greengard spectral solver [@mayani2025freeSpacePoisson]. |
+| `FFTTruncatedGreenPeriodicPoissonSolver` | An FFT-based solver for long-range interaction only, using a truncated Green function. This is needed in the P3M approach to include collisions. |
+| `PoissonCG` | (Preconditioned) Conjugate Gradient solver based on a finite differences discretization of the Poisson equation. |
+| `FEMPoissonSolver` | Matrix-free FEM-based Poisson solver (using Conjugate Gradient as the iterative solver). |
+| `PreconditionedFEMPoissonSolver` | FEM Poisson solver with preconditioning (using PCG). |
 
-The free-space spectral Poisson solver work is an important reference for this chapter [@mayani2025freeSpacePoisson].
-
-The 2026 thesis consolidates solver behavior across correctness, memory footprint, and scaling studies for FFT- and FEM-based Poisson paths in IPPL [@mayani2026massivelyParallelPhd].
+For more information on Poisson solvers in IPPL, see [@mayani2026massivelyParallelPhd].
 
 ## Solver hierarchy
 
@@ -36,34 +40,47 @@ classDiagram
   }
   class FFTOpenPoissonSolver {
     +setRhs(rhs)
-    +setGradFD()
     +solve()
-    +getHessian()
+    +greensFunction()
   }
   class FFTTruncatedGreenPeriodicPoissonSolver {
     +setRhs(rhs)
     +solve()
     +greensFunction()
   }
+  class PoissonCG {
+    +setRhs(rhs)
+    +setSolver(lhs)
+    +solve()
+  }
+  class FEMPoissonSolver {
+    +setRhs(rhs)
+    +solve()
+  }
+  class PreconditionedFEMPoissonSolver {
+    +setRhs(rhs)
+    +solve()
+  }
 
   Poisson <|-- FFTPeriodicPoissonSolver
   Poisson <|-- FFTOpenPoissonSolver
   Poisson <|-- FFTTruncatedGreenPeriodicPoissonSolver
+  Poisson <|-- PoissonCG
+  Poisson <|-- FEMPoissonSolver
+  Poisson <|-- PreconditionedFEMPoissonSolver
 ```
 
-The base `Poisson<FieldLHS, FieldRHS>` class stores LHS, RHS, optional gradient output, and solver parameters. It defines output modes:
+The base `Poisson<FieldLHS, FieldRHS>` class stores LHS, RHS, and solver parameters. One can also pass a solver output type as a parameter, which is an enum:
 
 | Output type | Meaning |
 |---|---|
-| `SOL` | Store the scalar potential solution. |
-| `GRAD` | Store the gradient/electric field. |
-| `SOL_AND_GRAD` | Store both solution and gradient. |
-
-The base equation convention is documented as `-laplace(lhs) = rhs`; the open solver header states the equivalent implementation convention `laplace(phi) = -rho` and `E = -grad(phi)`.
+| `SOL` | Get the solution of the Poisson equation, in-place (replaces the rhs with the solution). |
+| `GRAD` | Get the gradient of the potential only i.e. the electric field (in the electrostatic case). Note that this returns the negative gradient ($\mathbf{E} = -\nabla\phi$). |
+| `SOL_AND_GRAD` | Return both solution and gradient. |
 
 ## FFT solver parameters
 
-FFT-based Poisson solvers inherit the FFT parameter set:
+FFT-based Poisson solvers inherit the FFT parameter set (see @sec-fft):
 
 ```cpp
 params.add("use_heffte_defaults", false);
@@ -74,17 +91,85 @@ params.add("comm", ippl::a2av);
 params.add("r2c_direction", 0);
 ```
 
-Additional solver-specific keys include:
+For the `FFTOpenPoissonSolver`, one can also choose the algorithm type:
 
-| Solver | Key | Meaning |
-|---|---|---|
-| `Poisson` base | `output_type` | `SOL`, `GRAD`, or `SOL_AND_GRAD`. |
 | `FFTOpenPoissonSolver` | `algorithm` | `HOCKNEY`, `VICO`, `BIHARMONIC`, or `DCT_VICO`. |
-| `FFTOpenPoissonSolver` | `hessian` | Enable Hessian output through `getHessian()`. |
-| `FFTTruncatedGreenPeriodicPoissonSolver` | `alpha` | Ewald-style smoothing/control parameter. |
-| `FFTTruncatedGreenPeriodicPoissonSolver` | `force_constant` | Force/Green function scale. |
 
-## Periodic FFT solver
+The `HOCKNEY` algorithm is the standard Hockney-Eastwood method for solving the Poisson equation with open boundary condiions [@hockney1988]. The `VICO` algorithm is a novel method with spectral accuracy properties, described in [@mayani2025freeSpacePoisson], and the `DCT_VICO` is its memory-optimized counterpart. We suggest the user to use `DCT_VICO` as the algorithm of choice, as it has similar performance and memory footprint as the Hockney-Eastwood method, with the added benefit of higher-accuracy. 
+
+## (Preconditioned) Conjugate Gradient solver
+
+`PoissonCG` solves the Poisson problem with a finite-difference Laplace operator. The Poisson equation is discretized using a second-order centered finite differences scheme, which in the 1D case looks like:
+
+$$
+\frac{\phi_{i+1} - 2\phi_i + \phi_{i-1}}{\Delta x^2} = - \rho_i \hspace{5mm} \forall i \in \{0,..., n-1\}.
+$$
+This is also known as the 3-point stencil. In the 2D case, this becomes a 5 point stencil, while in the 3D case, it becomes a 7D stencil. 
+
+When applying this to every grid point of the field, we obtain a linear system of equations of type $A \mathbf{\phi} = \matbf{\rho}$, where $A$ is an $n\times n$ sized matrix:
+$$
+\underbrace{\frac{1}{\Delta x^2}\begin{bmatrix}
+        2 & -1 &  \\
+        -1 & 2 & -1 & \\
+        & -1 & \ddots & \ddots &\\
+        & & \ddots &  \ddots & -1 \\
+        & & & -1  & 2 \\
+\end{bmatrix}}_\text{$A$} \cdot
+\underbrace{\begin{bmatrix}
+        \phi_0   \\
+        \phi_1  \\
+        \vdots \\
+        \phi_{n-2}\\
+        \phi_{n-1} \\
+\end{bmatrix}}_\text{$\vec{\phi}$} =
+\underbrace{\begin{bmatrix}
+        \rho_0   \\
+        \rho_1  \\
+        \vdots \\
+        \rho_{n-2}\\
+        \rho_{n-1} \\
+\end{bmatrix}}_\text{$\vec{\rho}$}.
+$$
+
+Instead of building the matrix, one can solve this linear system of equations in a \textbf{matrix-free} manner by defining an operator for the action of the matrix $A$ on a vector $\vec{x}$:
+$$
+[F_A(\vec{x})]_j = 	\frac{\vec{x}_{j+1} - 2\vec{x}_j + \vec{x}_{j-1}}{h_x^2}.
+$$
+
+This is what is done in `PoissonCG`, as building the matrix is an expensive task, especially when the number ofgrid points in the simulation is large. By defining a Laplace operator, one can simply pass the action of the matrix on a vector to the CG iterative solver, which uses this operator to simply compute any needed matrix-vector products  on the fly.
+
+This solver can either be run using plain CG, or with a preconditioner to reduce the condition number of the matrix and therefore make the iterative solver converge faster (PCG). 
+
+The preconditioners which are currently available are: Jacobi, Richardson, Gauss-Seidel, and SSOR (see [@vinciguerra2021performancePortableCg; @bolliger2024matrixFreePreconditioner; @schreiner2024matrixFreePreconditioner] for more information on these preconditioners and their implementation). 
+
+The preconditioner can be set using the solver `ParameterList`. A list of the input parameters which one can pass are:
+
+| Key | Meaning |
+|---|---|
+| `solver` | `non-preconditioned` for CG or `preconditioned` for PCG. |
+| `preconditioner_type` | `jacobi`, `richardson`, `gauss-seidel`, `ssor` |
+| `richardson_iterations` | Number of Richardson preconditioner iterations. |
+| `gauss_seidel_inner_iterations` | Inner Gauss-Seidel or SSOR iterations. |
+| `gauss_seidel_outer_iterations` | Outer Gauss-Seidel or SSOR iterations. |
+| `ssor_omega` | SSOR relaxation parameter. |
+| `communication` | This is a bool (`0` or `1`) which when enabled turns on halo communication in the preconditioners. |
+| `max_iterations` | Iteration cap for the linear solve. |
+| `tolerance` | Residual tolerance. |
+
+`TestCGSolver` verifies convergence against a manufactured periodic solution. Its command-line parser accepts a grid-size exponent and optional scaling/preconditioner selectors; for example `j` selects Jacobi, `r` selects Richardson, `g` selects Gauss-Seidel, and `s` selects SSOR. The test prints relative error, residual, and iteration count.
+
+## FEMPoissonSolver
+
+The FEM-based Poisson solver is based on the FEM framework in IPPL (`src/FEM`). It employs a first-order Lagrange space to discretize the Poisson equation in its variational form:
+
+$$
+\int_{\Omega} \nabla \phi \cdot \nabla v  = \int_{\Omega} \rho \cdot v, \hspace{4mm} \forall v\in V.
+$$
+where $v$ is known as the test function, and $\phi$ the trial function. 
+
+When applying a finite element discretization to this variational form, one obtains a linear system of equations $A\mathbf{x} = \mathbf{b}$, where $A$ is known as the stiffness matrix and $\mathbf{b}$ as the load vector. Assembling the stifness matrix is very expensive, therefore we choose to employ a matrix-free approach, where the product $A\mathbf{x}$ is computed on-the-fly. More information on this approach can be found in [@mayani2026massivelyParallelPhd].
+
+## Minimal working example of a solver
 
 `FFTPeriodicPoissonSolver` solves periodic Poisson problems using real-to-complex FFTs. `test/solver/TestFFTPeriodicPoissonSolver.cpp` verifies the solver against a smooth manufactured solution on `[-1,1]^3` over multiple grid sizes.
 
@@ -109,160 +194,11 @@ Solver_t solver;
 solver.mergeParameters(params);
 solver.setRhs(rhs);
 solver.solve();
+# rhs should now contain the solution of the Poisson equation.
 ```
 
 With `output_type == SOL`, the RHS field is overwritten with the potential in the current test pattern.
 
 ## Verification material
 
-The first documented examples should come from `test/solver`: Gaussian convergence, sphere tests, Hockney-style comparisons, Vico-Greengard comparisons, and FEM Poisson tests.
-
-## Conjugate-gradient Poisson solver
-
-`PoissonCG` solves the Poisson problem with a finite-difference Laplace operator. The plain mode uses conjugate gradients; the preconditioned mode uses the same operator in a PCG algorithm and configures the preconditioner through `ParameterList`.
-
-The main parameters used by `src/PoissonSolvers/PoissonCG.h`, `test/solver/TestCGSolver.cpp`, and `alpine/FieldSolver.hpp` are:
-
-| Key | Meaning |
-|---|---|
-| `solver` | `non-preconditioned` for CG or `preconditioned` for PCG. |
-| `preconditioner_type` | `jacobi`, `richardson`, `gauss-seidel`, `ssor`, and experimental polynomial variants where available. |
-| `richardson_iterations` | Number of Richardson preconditioner iterations. |
-| `gauss_seidel_inner_iterations` | Inner Gauss-Seidel or SSOR iterations. |
-| `gauss_seidel_outer_iterations` | Outer Gauss-Seidel or SSOR iterations. |
-| `communication` | Enables halo communication while applying supported preconditioners. |
-| `ssor_omega` | SSOR relaxation parameter. |
-| `max_iterations` | Iteration cap for the linear solve. |
-| `tolerance` | Residual tolerance. |
-| `output_type` | Usually `GRAD` when the solver should also compute the electric field. |
-
-`TestCGSolver` verifies convergence against a manufactured periodic solution. Its command-line parser accepts a grid-size exponent and optional scaling/preconditioner selectors; for example `j` selects Jacobi, `r` selects Richardson, `g` selects Gauss-Seidel, and `s` selects SSOR. The test prints relative error, residual, and iteration count, making it the right first regression test when changing the CG or PCG implementation.
-
-The Landau damping mini-app exercises the same solver path in a full PIC workflow. In that path, `FieldSolver::initPCGSolver()` translates the command-line preconditioner arguments into `ParameterList` entries, then initializes `PoissonCG` as the scalar potential solve and requests gradient output for the electric field.
-
-The preconditioner work is documented in ETH CSE theses on matrix-free PCG preconditioning [@bolliger2024matrixFreePreconditioner; @schreiner2024matrixFreePreconditioner] and in earlier IPPL CG work [@vinciguerra2021performancePortableCg].
-
-## Open-boundary Gaussian test
-
-`test/solver/TestGaussian.cpp` is the best first solver example. It solves
-
-\[
-\nabla^2 \phi = -\rho
-\]
-
-for a smooth Gaussian source on the unit box and compares the computed potential against the analytic expression involving the error function.
-
-The command-line interface is:
-
-```bash
-srun ./TestGaussian <nx> <ny> <nz> <reshape> <comm> <reorder> <algorithm> --info 5
-```
-
-Accepted values:
-
-| Argument | Values |
-|---|---|
-| `reshape` | `pencils`, `slabs` |
-| `comm` | `a2a`, `a2av`, `p2p`, `p2p_pl` |
-| `reorder` | `reorder`, `no-reorder` |
-| `algorithm` | `HOCKNEY`, `VICO`, `DCT_VICO` |
-
-Example:
-
-```bash
-srun ./TestGaussian 64 64 64 pencils a2a no-reorder HOCKNEY --info 5
-```
-
-The solver is configured through `ParameterList`:
-
-```cpp
-ippl::ParameterList params;
-params.add("use_pencils", true);
-params.add("comm", ippl::a2a);
-params.add("use_reorder", false);
-params.add("use_heffte_defaults", false);
-params.add("use_gpu_aware", true);
-params.add("r2c_direction", 0);
-params.add("algorithm", Solver_t::HOCKNEY);
-params.add("output_type", Solver_t::SOL);
-
-Solver_t solver(rho, params);
-solver.solve();
-```
-
-After `solve()`, the scalar RHS field contains the solution when `output_type` is `SOL`. The test computes a relative error with `norm(rho - exact) / norm(exact)` and repeats the solve five times for timing studies.
-
-## Open-boundary algorithms
-
-`FFTOpenPoissonSolver` provides the open-boundary algorithms used in the free-space spectral Poisson solver work [@mayani2025freeSpacePoisson]:
-
-| Algorithm | Use |
-|---|---|
-| `HOCKNEY` | Classical doubled-domain convolution approach. |
-| `VICO` | Vico-Greengard free-space convolution with spectral convergence for smooth sources. |
-| `DCT_VICO` | Improved Vico-Greengard path using cosine type-I transform support. |
-| `BIHARMONIC` | Biharmonic open-boundary variant, tested separately. |
-
-The solver owns or constructs auxiliary domains for doubled fields, complex Fourier fields, Green functions, and, for Vico variants, larger Green function workspaces.
-
-### Thesis-backed behavior summary
-
-The thesis results provide a practical interpretation of when each free-space method is advantageous [@mayani2026massivelyParallelPhd]:
-
-| Source regularity | Observed behavior | Practical recommendation |
-|---|---|---|
-| Smooth source (e.g. Gaussian) | Vico-family methods show spectral convergence; Hockney-Eastwood remains second order. | Prefer `DCT_VICO` when memory allows and smoothness matters. |
-| Non-smooth source (e.g. compact-support sphere) | Vico-family methods lose spectral convergence and behave effectively second order. | Accuracy gap narrows; choose based on runtime/memory trade-offs. |
-| Large production runs | Optimized Vico (`DCT_VICO`) is designed to reduce memory overhead of original Vico while retaining high-accuracy potential. | Prefer `DCT_VICO` over original `VICO` for large cases. |
-
-In practical terms, `DCT_VICO` is the default "high-upside" choice for smooth electrostatic sources, while `HOCKNEY` remains a robust baseline.
-
-## Implementation notes from the thesis
-
-The free-space solve path in IPPL follows the same high-level stages for Hockney and Vico variants [@mayani2026massivelyParallelPhd]:
-
-1. zero-pad the source to a doubled domain,
-2. perform FFT/DCT transforms and spectral multiplication by Green function data,
-3. restrict the result back to the original domain.
-
-For distributed layouts, the expensive part is not only FFTs but also data movement between original and doubled-domain ownership maps. In IPPL this is implemented with overlap detection, pack/send, and unpack/accumulate patterns over rank-local subdomains.
-
-## Method selection guide
-
-Use the following policy unless application-specific validation says otherwise:
-
-| Goal | Suggested solver |
-|---|---|
-| Best general baseline for open BCs | `FFTOpenPoissonSolver` with `HOCKNEY` |
-| Higher accuracy on smooth sources | `FFTOpenPoissonSolver` with `DCT_VICO` |
-| Periodic electrostatics with spectral solve | `FFTPeriodicPoissonSolver` |
-| Iterative finite-difference route and preconditioner experimentation | `PoissonCG` |
-| FEM route (space compatibility, matrix-free FE operators) | `FEMPoissonSolver` / `PreconditionedFEMPoissonSolver` |
-
-Related ETH work covers the state of the open-boundary FFT solver and alternative open Poisson directions, including Vico-Greengard improvements and a dual-space multilevel kernel-splitting approach [@montanaro2023openBoundaryFftPoisson; @ammann2024dualSpaceKernelSplitting].
-
-## Sphere test
-
-`test/solver/TestSphere.cpp` tests the open solver for a gravitational sphere. The source is constant inside a radius and zero outside, with an analytic potential inside and outside the sphere.
-
-Run shape:
-
-```bash
-srun ./TestSphere HOCKNEY --info 5
-srun ./TestSphere VICO --info 5
-srun ./TestSphere DCT_VICO --info 5
-```
-
-The test sweeps grid sizes `{16, 32, 64, 128}` and prints spacing/error pairs. This is a useful companion to the Gaussian test because the source has a compact support discontinuity at the sphere radius.
-
-## Truncated Green periodic solver
-
-`FFTTruncatedGreenPeriodicPoissonSolver` solves a periodic convolution problem with a Green function
-
-\[
-G(r) = C \frac{\operatorname{erf}(\alpha r)}{r},
-\]
-
-where `alpha` controls the long-range interaction and `force_constant` is the scale factor. The solver stores the real Green function, transformed Green function, transformed density, and temporary complex fields.
-
-The first manual example should come from `test/solver/TestFFTTruncatedGreenPeriodicPoissonSolver.cpp`.
+The correctness and convergence of all solvers are tested in `test/solver` and `test/solver/fem`(for the FEM-based solver). All test files have instructions on how to run them at the beginning of the file. 
