@@ -44,10 +44,10 @@ flowchart LR
   Layout --> Space["FiniteElementSpace"]
   Element["Element type"] --> Space
   Quad["Quadrature rule"] --> Space
-  Space --> Assembly["evaluateAx / load vector"]
+  Space --> Assembly["evaluateAx / evaluateLoadVector"]
 ```
 
-## Lagrange spaces
+## Lagrange space 
 
 `LagrangeSpace` represents structured-grid nodal Lagrange elements, and is templated on the order. The number of element DOFs is computed as `(Order + 1)^Dim`. The class exposes the pieces a user expects for elliptic and diffusion-like problems:
 
@@ -61,7 +61,7 @@ flowchart LR
 
 N.B. Only first-order supported currently.
 
-## Nedelec spaces
+## Nedelec space
 
 `NedelecSpace` provides vector-valued edge DOFs, used to represent electric fields in the Maxwell equations. The current implementation computes the number of element DOFs as `Dim * 2^(Dim - 1)`.
 
@@ -83,7 +83,7 @@ It uses the `FEMVector` as its degree of freedom storage, as opposed to IPPL fie
 | `unit_tests/FEM/LagrangeSpace.cpp` | Validate scalar basis functions and assembly. |
 | `unit_tests/FEM/NedelecSpace.cpp` | Validate edge basis functions, curls, and vector DOF mapping. |
 
-## Matrix-free solver workflow
+## Matrix-free FEM-based solver workflow
 
 The thesis describes the FEM solver flow as a matrix-free operator pipeline rather than sparse-matrix assembly [@mayani2026massivelyParallelPhd]:
 
