@@ -1,48 +1,38 @@
 # Finite Elements {#sec-fem}
 
-The FEM layer provides structured finite-element spaces, elements, quadrature, interpolation, vector storage, assembly operations, and FEM-based solvers.
+The Finite Element Method (FEM) is a way to solve partial differential equations which consists of meshing the domain with elements and approximating the solution on these elements. Meshing with elements allows to model complex geometries, and removes the necessity of having a structured grid. In PIC, it is commonly used due to its ability to handle unstructured meshes, provide higher-order accuracy and allowing to simulate electromagnetic phenomena.
 
-```{mermaid}
-classDiagram
-  class FiniteElementSpace {
-    +numElements()
-    +numGlobalDOFs()
-    +getLocalDOFIndices()
-    +getGlobalDOFIndices()
-  }
-  class LagrangeSpace {
-    +evaluateAx()
-    +evaluateLoadVector()
-    +evaluateLumpedMass()
-    +computeErrorL2()
-  }
-  class NedelecSpace {
-    +evaluateAx()
-    +evaluateLoadVector()
-    +createFEMVector()
-    +reconstructToPoints()
-  }
-  class FEMVector
-  class Element
-  class Quadrature
-  FiniteElementSpace <|-- LagrangeSpace
-  FiniteElementSpace <|-- NedelecSpace
-  FiniteElementSpace --> Element
-  FiniteElementSpace --> Quadrature
-  LagrangeSpace --> FEMVector
-  NedelecSpace --> FEMVector
-```
+Typically, applying FEM to a PDE results in a linear system of equations to solve
+$$
+A\mathbf{x} = \mathbf{b},
+$$
+where $A$ is known as the stiffness matrix and $\mathbf{b}$ as the load vector. These vector contain values at locations known as degrees of freedom (DOFs), and are imposed by the finite element representation/space one chooses. 
+
+To solve a PDE, one can therefore choose a finite element discretization, and the solve the system $A\mathbf{x} = \mathbf{b}$ with a method like Conjugate Gradient, given that $A$ is symmetric positive definite.
+
+In IPPL, the FEM framework can be found under `src/FEM`. It contains all the machinery to define quadratures, elements, finite element spaces, interpolation schemes, and degree-of-freedom storage. Currently, only structured Cartesian meshes with uniform mesh spacing are supported. Furthermore, only first-order Lagrange and Nédélec finite element spaces are available. 
+
+Ongoing work: higher-order finite element spaces, and implementation of Raviart-Thomas finite element space.
+
+For information about finite element spaces and their implementation, please see [https://defelement.org/](https://defelement.org/).
+
+![](../../figures/FEMstructure.png){fig-alt="FEM class diagram" width="85%"}
 
 ## Main classes
 
 | Class | Role |
 |---|---|
-| `FiniteElementSpace` | Common finite-element space base for structured rectilinear meshes, element indexing, and DOF mapping. |
+| `FiniteElementSpace` | Common finite-element space base for structured rectilinear meshes and element indexing. |
 | `LagrangeSpace` | Nodal Lagrange finite-element space for scalar fields. |
-| `NedelecSpace` | Edge-oriented Nedelec finite-element space for vector fields and curl-curl operators. |
-| `FEMVector` | FEM vector storage and conversion layer. |
-| `FEMInterpolate` | Interpolation helper functionality. |
-| `QuadrilateralElement`, `HexahedralElement`, `EdgeElement` | Element definitions. |
+| `NedelecSpace` | Edge-oriented Nedelec finite-element space, to represent the electric field. |
+| `FEMVector` | Data structure to store degrees of freedom. |
+| `FEMInterpolate` | Interpolation operators from particles to FEM mesh and vice versa. |
+| `EdgeElement`(1D), `QuadrilateralElement` (2D), `HexahedralElement` (3D) | Element definitions. |
+| `MidpointQuadrature`, `GaussJacobiQuadrature` | Integration quadrature definitions, based on different schemes. |
+
+Currently, the `FEMVector` is the data structure to store degrees of freedom at arbitrary locations. It is used in the `NedelecSpace` to store the edge degrees of freedom. However, in the first-order Lagrange case, degrees of freedom exist only at vertices i.e. they are confounded with the nodal grid. Hence, in `LagrangeSpace`, we use the normal IPPL fields and meshes to store the degree of freedom data. This should be changed to adopt the `FEMVector` or other alternative degree of freedom storage solutions for higher-order Lagrange spaces, where degrees of freedom can exist on edges and faces too. 
+
+To interface the FEM framework into Particle-Mesh methods, in particular Particle-in-Cell, one also needs an appropriate interpolation to and from the finite element space for the `scatter` and `gather` in the PIC loop (see @sec-theory). This is provided by `FEMInterpolate`.
 
 ## Space construction
 
@@ -55,56 +45,43 @@ flowchart LR
   Element["Element type"] --> Space
   Quad["Quadrature rule"] --> Space
   Space --> Assembly["evaluateAx / load vector"]
-  Space --> Error["error and reconstruction"]
 ```
-
-The common base provides the indexing vocabulary:
-
-| Method family | Meaning |
-|---|---|
-| `numElements`, `getElementNDIndex` | Element counts and element-domain indexing. |
-| `getMeshVertexNDIndex`, `getElementMeshVertexIndices` | Relationship between mesh vertices and element vertices. |
-| `numGlobalDOFs`, `getLocalDOFIndex`, `getGlobalDOFIndex` | Scalar local/global DOF queries. |
-| `getLocalDOFIndices`, `getGlobalDOFIndices` | Element-wise DOF index arrays used in assembly. |
 
 ## Lagrange spaces
 
-`LagrangeSpace` represents structured-grid nodal Lagrange elements. The number of element DOFs is computed as `(Order + 1)^Dim`. The class exposes the pieces a user expects for elliptic and diffusion-like problems:
+`LagrangeSpace` represents structured-grid nodal Lagrange elements, and is templated on the order. The number of element DOFs is computed as `(Order + 1)^Dim`. The class exposes the pieces a user expects for elliptic and diffusion-like problems:
 
 | Capability | Use |
 |---|---|
 | Basis and gradient evaluation | Evaluate shape functions and derivatives at quadrature points. |
-| `evaluateAx` | Apply an assembled operator action without exposing the full matrix. |
-| `evaluateLoadVector` | Assemble a right-hand-side vector from a source function. |
-| `evaluateLumpedMass` | Build lumped mass data for explicit or preconditioned workflows. |
-| `computeErrorL2`, `computeAvg` | Measure convergence against analytic fields or averages. |
-| `updateLayout` | Rebuild layout-dependent data after distribution changes. |
+| `evaluateAx` | Apply the action of the stiffness matrix A on a vector x without assembling the full matrix - this is a matrix-free operator. |
+| `evaluateLoadVector` | Assemble the load vector from a source function. |
+| `computeErrorL2` | Measure convergence against analytic fields. |
+| `updateLayout` | Update the finite element distribution if the layout changes due to new domain decomposition via load balancing. |
+
+N.B. Only first-order supported currently.
 
 ## Nedelec spaces
 
-`NedelecSpace` provides vector-valued edge DOFs for Maxwell-type curl-curl operators. The current implementation computes the number of element DOFs as `Dim * 2^(Dim - 1)`.
+`NedelecSpace` provides vector-valued edge DOFs, used to represent electric fields in the Maxwell equations. The current implementation computes the number of element DOFs as `Dim * 2^(Dim - 1)`.
+
+It uses the `FEMVector` as its degree of freedom storage, as opposed to IPPL fields (like the `LagrangeSpace`). The `FEMVector` is a flat one-dimensional `Kokkos::View<T*>`, whose indices need to be mapped to the elements and their degrees of freedom.
 
 | Capability | Use |
 |---|---|
-| Shape and curl evaluation | Evaluate vector basis functions and their curls. |
+| Basis and curl evaluation | Evaluate vector basis functions and their curls. |
 | `getFEMVectorDOFIndices` | Map FEM vector entries to local element DOFs. |
-| `evaluateAx` | Apply curl-curl plus mass-like operators. |
-| `evaluateLoadVector`, `evaluateLoadVectorFunctor` | Build source vectors from functions or functors. |
-| `createFEMVector` | Construct storage compatible with the distributed FEM space. |
-| `reconstructToPoints` | Reconstruct vector fields at physical points. |
-| Boundary DOF queries | Identify DOFs affected by boundary conditions. |
+| `evaluateAx` | Apply FEM matrix to a vector (given a weak form of a PDE). |
+| `evaluateLoadVector` | Build the load vector given a source. |
+| `createFEMVector` | Construct the `FEMVector` for DOF storage. |
 
-## Tests to document first
+## Unit tests
 
 | Test family | Manual purpose |
 |---|---|
 | `unit_tests/FEM/FiniteElementSpace.cpp` | Validate element indexing and local/global DOF mapping. |
-| `unit_tests/FEM/LagrangeSpace.cpp` | Validate scalar basis functions, assembly, and reconstruction. |
+| `unit_tests/FEM/LagrangeSpace.cpp` | Validate scalar basis functions and assembly. |
 | `unit_tests/FEM/NedelecSpace.cpp` | Validate edge basis functions, curls, and vector DOF mapping. |
-| `test/solver/fem/TestZeroBC_sin*` | Show homogeneous Dirichlet Poisson-style verification. |
-| `test/solver/fem/TestPeriodicBC_sinsin*` | Show periodic finite-element verification. |
-| `test/solver/fem/TestNonhomDirichlet_*` | Show non-homogeneous boundary treatment. |
-| `test/solver/fem/TestMaxwellDiffusion*` | Show Nedelec-based Maxwell diffusion verification. |
 
 ## Matrix-free solver workflow
 
