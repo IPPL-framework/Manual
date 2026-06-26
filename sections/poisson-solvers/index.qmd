@@ -93,9 +93,66 @@ params.add("r2c_direction", 0);
 
 For the `FFTOpenPoissonSolver`, one can also choose the algorithm type:
 
+| Solver | Parameter | Values |
+|---|---|---|
 | `FFTOpenPoissonSolver` | `algorithm` | `HOCKNEY`, `VICO`, `BIHARMONIC`, or `DCT_VICO`. |
+| `FFTOpenPoissonSolver` | `greens_function` | `STANDARD` or `INTEGRATED`; only used by `HOCKNEY`. |
 
-The `HOCKNEY` algorithm is the standard Hockney-Eastwood method for solving the Poisson equation with open boundary condiions [@hockney1988]. The `VICO` algorithm is a novel method with spectral accuracy properties, described in [@mayani2025freeSpacePoisson], and the `DCT_VICO` is its memory-optimized counterpart. We suggest the user to use `DCT_VICO` as the algorithm of choice, as it has similar performance and memory footprint as the Hockney-Eastwood method, with the added benefit of higher-accuracy. 
+The `HOCKNEY` algorithm is the standard Hockney-Eastwood method for solving the Poisson equation with open boundary conditions [@hockney1988]. The `VICO` algorithm is a novel method with spectral accuracy properties, described in [@mayani2025freeSpacePoisson], and the `DCT_VICO` is its memory-optimized counterpart. We suggest the user to use `DCT_VICO` as the algorithm of choice, as it has similar performance and memory footprint as the Hockney-Eastwood method, with the added benefit of higher-accuracy.
+
+### Hockney Green-function models
+
+The `HOCKNEY` open-boundary solver can build either a point-sampled or a cell-integrated real-space Green function before transforming the doubled-grid convolution kernel. The selection is made with the integer `greens_function` parameter:
+
+| Value | Meaning |
+|---|---|
+| `FFTOpenPoissonSolver::STANDARD` | Point-sampled free-space kernel. This is the default and preserves historical IPPL behavior. |
+| `FFTOpenPoissonSolver::INTEGRATED` | Cell-averaged kernel following Qiang et al. [@qiang2006threeDimensionalQuasiStatic; @qiang2005lbnl59098]. This is currently implemented for 3D `HOCKNEY` only. |
+
+The standard kernel samples
+$$
+G(\mathbf{r}) = -\frac{1}{4\pi |\mathbf{r}|}.
+$$
+
+The integrated kernel assumes the charge density is uniform over each source cell and uses the cell average
+$$
+\overline{G}(\mathbf{r}) =
+-\frac{1}{4\pi h_x h_y h_z}
+\int_{-h_x/2}^{h_x/2}
+\int_{-h_y/2}^{h_y/2}
+\int_{-h_z/2}^{h_z/2}
+\frac{dx' dy' dz'}
+     {\sqrt{(x-x')^2 + (y-y')^2 + (z-z')^2}}.
+$$
+
+IPPL evaluates this integral by the closed-form eight-corner difference of the antiderivative
+$$
+\begin{aligned}
+F(x,y,z) ={}&
+-\frac{z^2}{2}\tan^{-1}\!\left(\frac{xy}{zr}\right)
+-\frac{y^2}{2}\tan^{-1}\!\left(\frac{xz}{yr}\right)
+-\frac{x^2}{2}\tan^{-1}\!\left(\frac{yz}{xr}\right) \\
+&+ yz\ln(x+r) + xz\ln(y+r) + xy\ln(z+r),
+\end{aligned}
+$$
+where $r=\sqrt{x^2+y^2+z^2}$. This removes the point singularity from the cell containing the source and is useful for high-aspect-ratio beams where point sampling of $1/r$ can be inefficient near narrow dimensions.
+
+A minimal setup is:
+
+```cpp
+using Solver_t = ippl::FFTOpenPoissonSolver<VField_t, Field_t>;
+
+ippl::ParameterList params;
+params.add("algorithm", Solver_t::HOCKNEY);
+params.add("greens_function", Solver_t::INTEGRATED);
+
+Solver_t solver;
+solver.mergeParameters(params);
+solver.setRhs(rho);
+solver.solve();
+```
+
+Calling `shiftedGreensFunction(shift)` replaces the cached Hockney kernel by the shifted kernel $G(\mathbf{r}-\mathbf{s})$. With `greens_function == INTEGRATED`, the same shift is applied before the cell average is evaluated. This is intended for workflows such as image-charge corrections, where the caller constructs the image contribution around an IPPL solve with a shifted kernel. The shifted kernel remains active until `greensFunction()` is called again or the mesh spacing changes.
 
 ## (Preconditioned) Conjugate Gradient solver
 
