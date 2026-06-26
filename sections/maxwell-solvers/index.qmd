@@ -4,10 +4,12 @@ While Poisson solvers are appropriate for many use cases of \ac{pic} codes—for
 
 To simulate an electromagnetic system, one needs to solve the Maxwell equations:
 $$
-\mathbf{\nabla}\cross\mathbf{E} &= -\frac{\partial \mathbf{B}}{\partial t}, \\
-\mathbf{\nabla}\cross\mathbf{B} &= \mu_0 \mathbf{J} + \mu_0\epsilon_0 \frac{\partial \mathbf{E}}{\partial t}, \\
+\begin{align}
+\mathbf{\nabla}\times\mathbf{E} &= -\frac{\partial \mathbf{B}}{\partial t}, \\
+\mathbf{\nabla}\times\mathbf{B} &= \mu_0 \mathbf{J} + \mu_0\epsilon_0 \frac{\partial \mathbf{E}}{\partial t}, \\
 \mathbf{\nabla}\cdot\mathbf{E} &= \frac{\rho}{\epsilon_0}, \\
-\mathbf{\nabla}\cdot\mathbf{B}  &= 0, 
+\mathbf{\nabla}\cdot\mathbf{B}  &= 0,
+\end{align}
 $$
 
 The last two equations are automatically satisfied if an appropriate charge-conserving interpolation scheme is chosen to scatter and gather the charge density $\rho$, the current $\mathbf{J}$, and the fields $\mathbf{E}$ and $\mathbf{B}$ in the context of the Particle-in-Cell method. Therefore, Maxwell solvers need only solve the first two equations. 
@@ -20,8 +22,10 @@ Furthermore, one can also use FEM as a solver for the Maxwell equations, giving 
 
 A first-order Nédélec space is already available in the FEM framework of IPPL, while work on other spaces is ongoing. Therefore, for now we may only represent electric fields in Finite Elements. A `FEMMaxwellDiffusionSolver` using the Nédélec space has been implemented, which solves the following PDE in the domain $\Omega$, with zero Dirichlet boundary conditions:
 $$
+\begin{align}
 \nabla \times \nabla \times \mathbf{u}(\mathbf{x}) + \mathbf{u}(\mathbf{x}) &= \mathbf{g}(\mathbf{x}) \text{ in } \Omega,\\
 \mathbf{u}(\mathbf{x}) \times \mathbf{n} &= \mathbf{0}  \text{ on } \partial \Omega\text{,}
+\end{align}
 $$
 where $g(\mathbf{x})$ is the source function, $u(\mathbf{x})$ the solution we seek, and $\mathbf{n}$ the normal of the domain pointing outwards. This second-order definite Maxwell equation represents the electromagnetic diffusion problem. The operator $\nabla \times \nabla \times$ is known as the curl-curl operator.
 
