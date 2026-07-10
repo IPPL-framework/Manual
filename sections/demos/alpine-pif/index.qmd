@@ -2,6 +2,6 @@
 subtitle: "Demonstration of the Particle in Fourier Method"
 ---
 
-# ALPINE-PIF
+# ALPINE-PIF {#sec-demo-alpine-pif}
 
 coming soon!

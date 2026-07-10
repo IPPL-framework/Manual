@@ -2,6 +2,6 @@
 subtitle: "Simulation of a Free-Electron-Laser Undulator with IPPL"
 ---
 
-# FEL
+# FEL {#sec-demo-fel}
 
 Coming soon!

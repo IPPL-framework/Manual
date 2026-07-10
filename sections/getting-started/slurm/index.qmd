@@ -1,5 +1,5 @@
 
-# SLURM Job scripts
+# SLURM Job scripts {#sec-slurm}
 
 You can use the following example job scripts to run on the local PSI computing cluster, which uses slurm.
 More documentation on the local cluster can be found [here](https://lsm-hpce.gitpages.psi.ch/merlin6/introduction.html) (need to be in the PSI network to access).

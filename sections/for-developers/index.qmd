@@ -1,0 +1,18 @@
+---
+title: "For Developers"
+subtitle: "Resources for developers contributing to IPPL"
+---
+
+# For Developers {#sec-for-developers}
+<style>
+#sec-for-developers > h1 { display: none; }
+</style>
+
+
+This chapter contains information and guidelines for developers contributing to IPPL.
+
+- @sec-developer-guide: General guidelines for extending IPPL.
+- @sec-workflow: Development workflow and tools.
+- @sec-writing-unit-tests: Implementation and writing of unit tests.
+- @sec-performance-portability: Strategies for achieving performance portability.
+- @sec-api-reference: Detailed API reference documentation.

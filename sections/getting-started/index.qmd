@@ -1,0 +1,16 @@
+---
+title: "Getting Started"
+subtitle: "Getting Started with IPPL"
+---
+
+# Getting Started {#sec-getting-started}
+<style>
+#sec-getting-started > h1 { display: none; }
+</style>
+
+
+This chapter helps you set up and run your first IPPL programs.
+
+- @sec-installation: Instructions for building and installing IPPL.
+- @sec-hello-ippl: A simple Hello World example.
+- @sec-slurm: Running IPPL jobs on HPC systems with SLURM.

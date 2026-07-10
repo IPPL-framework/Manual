@@ -1,0 +1,14 @@
+---
+title: "Appendix"
+subtitle: "Supplementary Material"
+---
+
+# Appendix {#sec-appendix}
+<style>
+#sec-appendix > h1 { display: none; }
+</style>
+
+This chapter contains supplementary materials, literature references, and a playground for exploring IPPL.
+
+- @sec-literature: Literature references and bibliography.
+- @sec-playground: Interactive browser playground for exploring IPPL features.

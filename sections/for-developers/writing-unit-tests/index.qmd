@@ -1,0 +1,77 @@
+# Writing Unit Tests {#sec-writing-unit-tests}
+
+The generation of test configurations is implemented in `unit_tests/TestUtils.h`. It is controlled using the following struct:
+
+```cpp
+template <typename... Ts>
+struct Parameters { ... };
+
+struct TestParams {
+    using Spaces     = ippl::detail::TypeForAllSpaces<std::tuple>::exec_spaces_type;
+    using Precisions = std::tuple<double, float>;
+    using Combos     = CreateCombinations<Precisions, Spaces>::type;
+
+    template <unsigned... Dims>
+    using Ranks = std::tuple<Rank<Dims>...>;
+
+    template <unsigned... Dims>
+    using CombosWithRanks = typename CreateCombinations<Precisions, Spaces, Ranks<Dims...>>::type;
+
+    template <unsigned... Dims>
+    using tests = typename TestForTypes<
+        std::conditional_t<sizeof...(Dims) == 0, Combos, CombosWithRanks<Dims...>>>::type;
+...
+};
+```
+
+First, we generate a tuple containing all the available execution spacs (see `Utility/TypeUtils.h`). We then create tuples with the other parameters we want to test. The `CreateCombinations` struct recursively generates all combinations of the chosen parameters at compile time and instantiates the `Parameter` type to hold these combinations. We then use GoogleTest's `testing::Types<...>` to instantiate all the unit tests for each combination. Example:
+
+```cpp
+template <typename>
+class FieldTest;
+
+template <typename T, typename ExecSpace, unsigned Dim>
+class FieldTest<Parameters<T, ExecSpace, Rank<Dim>>> : public ::testing::Test { ... };
+
+using Tests = TestParams::tests<1, 2, 3, 4, 5, 6>;
+TYPED_TEST_CASE(FieldTest, Tests);
+
+TYPED_TEST(FieldTest, DeepCopy) { ... }
+```
+
+If we want to generate combinations beyond just ranks/precision/execution space like above, we can use the tuple generation with other types. For example, the particle bunch tests use two execution spaces:
+
+```cpp
+template <typename>
+class ParticleBaseTest;
+
+template <typename T, typename IDSpace, typename PositionSpace, unsigned Dim>
+class ParticleBaseTest<Parameters<T, IDSpace, PositionSpace, Rank<Dim>>> : public ::testing::Test { ... };
+
+using Precisions = TestParams::Precisions;
+using Spaces     = TestParams::Spaces;
+using Ranks      = TestParams::Ranks<1, 2, 3, 4, 5, 6>;
+using Combos     = CreateCombinations<Precisions, Spaces, Spaces, Ranks>::type;
+using Tests      = TestForTypes<Combos>::type;
+TYPED_TEST_CASE(ParticleBaseTest, Tests);
+
+TYPED_TEST(ParticleBaseTest, CreateAndDestroy) { ... }
+```
+
+## Running Unit tests
+
+To run all unit tests, you can use the following script:
+
+```bash
+#!/bin/bash
+
+for file in `find $1/unit_tests -type f`
+do
+    if [[ -x "$file" ]]
+    then
+        $file
+    fi
+done
+```
+
+The first argument needs to point to the directory where you built IPPL.

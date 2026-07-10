@@ -20,12 +20,10 @@ IPPL uses Kokkos for performance portability, MPI for distributed memory communi
 
 For users:
 
-1. Start with @sec-overview and @sec-getting-started.
+1. Start with @sec-overview and @sec-hello-ippl.
 2. Read @sec-core-concepts, then the data model chapters on fields and particles.
-<!-- 2. Read [Core Concepts](sections/core-concepts/index.qmd), then the data model chapters on fields and particles.  -->
 3. Move to FFT, Poisson, Maxwell, or FEM depending on the application.
-4. Use @sec-examples as executable documentation.
-
+4. Use @sec-tests and @sec-demos as executable documentation.
 
 
 For developers:

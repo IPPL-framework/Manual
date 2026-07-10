@@ -1,0 +1,173 @@
+# Integration Tests {#sec-integration-tests}
+
+
+Examples should be treated as executable documentation. Each example page should include the physics or numerical purpose, build flags, run command, expected output, and the IPPL concepts exercised.
+
+## Example page template
+
+Each example should use this structure:
+
+```markdown
+## Example name
+
+Source: `path/to/example.cpp`
+
+Purpose:
+: One paragraph explaining the numerical or physics problem.
+
+Build requirements:
+: Relevant CMake flags, backend assumptions, and optional dependencies.
+
+Run:
+: Command line and argument meaning.
+
+Expected result:
+: Key output lines, conservation check, convergence rate, or generated file.
+
+Concepts exercised:
+: IPPL classes and subsystems used by the example.
+```
+
+## First executable examples to expand
+
+### `PICnd`
+
+Purpose: tests a dimension-specialized particle-in-cell workflow with periodic particle boundary conditions, cloud-in-cell gather/scatter, and optional ORB-based repartitioning.
+
+```bash
+srun ./PICnd 128 128 128 10000 10 --info 10
+```
+
+Concepts exercised: `ParticleBase`, `ParticleSpatialLayout`, `ParticleAttrib`, `Field`, `FieldLayout`, `UniformCartesian`, `CIC`, `OrthogonalRecursiveBisection`, reductions, and particle migration.
+
+Expected checks: particle count is conserved after migration, `scatterCIC` checks charge conservation against the mesh field sum, and timers report particle update, scatter, gather, repartitioning, and velocity/position updates.
+
+### `LandauDamping`
+
+Purpose: runs a production-style electrostatic particle-in-cell mini-app through the ALPINE manager stack. The driver in `alpine/LandauDamping.cpp` creates a `LandauDampingManager`, which wires together `AlpineManager`, `FieldContainer`, `ParticleContainer`, `FieldSolver`, and load balancing. It is the best example for users who want to see the library-level particle, field, interpolation, solver, timing, and manager machinery in one executable.
+
+```bash
+srun ./LandauDamping Nx Ny Nz Np Nt solver_type load_balancing LeapFrog \
+  [preconditioner_type [preconditioner_params...]] \
+  --overallocate 2.0 --info 5
+```
+
+| Argument | Meaning |
+|---|---|
+| `Nx Ny Nz` | Number of grid points in each direction. |
+| `Np` | Number of simulation particles. |
+| `Nt` | Number of time steps. |
+| `solver_type` | Landau-compatible paths are `FFT`, `CG`, `PCG`, `FEM`, or `FEM_PRECON`; the generic `OPEN` solver exists in ALPINE but this miniapp rejects it because Landau damping is periodic. |
+| `load_balancing` | Particle load-balancing threshold; `0.1` means 10 percent. |
+| `LeapFrog` | Time-stepper used by the current Landau damping path. |
+
+`CG` selects the plain conjugate-gradient path. `PCG` and `FEM_PRECON` select preconditioned paths. The current executable reads a fixed five-token preconditioner block after `PCG` or `FEM_PRECON`; pass the relevant values first and use harmless padding values for unused entries until the parser is generalized.
+
+| Preconditioner | Extra arguments |
+|---|---|
+| `newton` | `level` |
+| `chebyshev` | `degree` |
+| `richardson` | `iterations communication`, where `communication` is `0` or `1`. |
+| `gauss-seidel` | `inner_iterations outer_iterations communication`, where `communication` is `0` or `1`. |
+| `ssor` | `inner_iterations outer_iterations omega`, commonly with `omega = 1.5707963`. |
+
+Example PCG run:
+
+```bash
+srun ./LandauDamping 256 256 256 134217728 20 PCG 0.1 LeapFrog \
+  ssor 4 2 1.5707963 0 --overallocate 2.0 --info 5
+```
+
+Concepts exercised: `LandauDampingManager`, `AlpineManager`, `FieldContainer`, `ParticleContainer`, `FieldSolver`, `PoissonCG`, `ParameterList`, ORB load balancing, particle migration, field solve, gather/scatter, diagnostics, and timings. The ALPINE/IPPL paper gives the broader performance-portability context for Landau damping mini-apps [@muralikrishnan2024scalingPicMiniapps]; recent ETH theses document preconditioner behavior and Landau damping scaling studies [@bolliger2024matrixFreePreconditioner; @schreiner2024matrixFreePreconditioner].
+
+For the local manager stack and execution flow, see @sec-alpine-manager-hierarchy.
+
+### `TestGaussian`
+
+Purpose: tests `FFTOpenPoissonSolver` with a Gaussian source and analytic potential.
+
+```bash
+srun ./TestGaussian 64 64 64 pencils a2a no-reorder HOCKNEY --info 5
+```
+
+Concepts exercised: `Field`, `UniformCartesian`, `FieldLayout`, `ParameterList`, HeFFTe options, Hockney/Vico algorithms, norms, and timing output.
+
+### `TestFieldBC`
+
+Purpose: demonstrates mixed face boundary conditions on a 3D scalar field.
+
+Concepts exercised: `BConds`, `PeriodicFace`, `NoBcFace`, `ConstantFace`, `ZeroFace`, `ExtrapolateFace`, `findBCNeighbors`, `apply`, and per-rank field output.
+
+### `TestLaplace`
+
+Purpose: verifies `laplace(field)` against the analytic Laplacian of a trigonometric function.
+
+```bash
+srun ./TestLaplace 64 10
+```
+
+Concepts exercised: periodic boundary conditions, local-to-global coordinate conversion, field expressions, `pow`, `sum`, relative error computation, timers, and `ippl::fence()`.
+
+### `ParticleSendRecv`
+
+Purpose: verifies that spatial particle migration sends particles to the rank owning the region that contains their position.
+
+Concepts exercised: `ParticleSpatialLayout`, `RegionLayout`, particle packing/unpacking, MPI exchange, particle boundary conditions, and global particle-count conservation.
+
+### `ParticleBC`
+
+Purpose: verifies particle boundary-condition behavior on upper and lower faces for `PERIODIC`, `REFLECTIVE`, `SINK`, and `NO`.
+
+Concepts exercised: `NDRegion`, `PRegion`, `ParticleLayout::applyBC`, and position attribute updates.
+
+### `GatherScatterTest`
+
+Purpose: verifies CIC gather/scatter behavior across one, two, and three dimensions.
+
+Concepts exercised: constant-field gather, additive gather, charge-conserving scatter, custom scatter range policies, and hashed scatter.
+
+### `TestFFTCC` and `TestFFTRC`
+
+Purpose: verify forward/backward FFT consistency for complex-to-complex and real-to-complex transforms.
+
+Concepts exercised: `FFT<CCTransform>`, `FFT<RCTransform>`, input/output layouts, `r2c_direction`, HeFFTe defaults, and ghost-free owned-region transforms.
+
+### `TestFFTPeriodicPoissonSolver`
+
+Purpose: verifies the periodic FFT Poisson solver on a smooth manufactured solution over grid refinements.
+
+Concepts exercised: `FFTPeriodicPoissonSolver`, `Poisson::OutputType`, `ParameterList`, RHS assignment in a Kokkos kernel, solution/gradient output modes, and relative error norms.
+
+### `TestSphere`
+
+Purpose: verifies `FFTOpenPoissonSolver` on the gravitational potential of a sphere.
+
+```bash
+srun ./TestSphere HOCKNEY --info 5
+```
+
+Concepts exercised: open-boundary algorithms, analytic source/solution kernels, grid refinement, and `norm(rho) / norm(exact)` style error measurement.
+
+### FEM Poisson and Lagrange tests
+
+Purpose: verify scalar finite-element spaces on structured meshes with homogeneous, periodic, and non-homogeneous boundary conditions.
+
+Concepts exercised: `FiniteElementSpace`, `LagrangeSpace`, element-local to global DOF mapping, load-vector assembly, operator application through `evaluateAx`, lumped mass construction, and L2 error computation.
+
+Expected checks: manufactured-solution error decreases under refinement, boundary DOFs match the selected condition, and preconditioned variants report residual behavior.
+
+### FEM Maxwell diffusion tests
+
+Purpose: verify the Nedelec finite-element path for vector-valued Maxwell diffusion problems.
+
+Concepts exercised: `NedelecSpace`, vector DOFs, basis curls, `FEMVector`, PCG solver parameters, reconstruction to points, and L2 error checks.
+
+Expected checks: the solver reaches the requested tolerance or iteration limit, exposes residue and iteration count, and produces the expected convergence behavior for the manufactured vector field.
+
+### Maxwell FDTD tests
+
+Purpose: verify finite-difference time-domain electromagnetic stepping and boundary handling.
+
+Concepts exercised: `FDTDSolverBase`, `StandardFDTDSolver`, `NonStandardFDTDSolver`, source fields, electric and magnetic fields, `fdtd_bc`, `timeShift`, `applyBCs`, and `evaluate_EB`.
+
+Expected checks: examples should state the time step and grid spacing, report field diagnostics, and make boundary assumptions explicit.

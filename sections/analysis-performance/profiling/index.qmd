@@ -1,6 +1,6 @@
 
 
-# Profiling
+# Profiling {#sec-profiling}
 
 ## MPI Calls 
 You can use the mpiP tool (https://github.com/LLNL/mpiP) to get statistics about the MPI calls in IPPL. 

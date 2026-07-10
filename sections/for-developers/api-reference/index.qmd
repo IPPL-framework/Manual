@@ -35,11 +35,11 @@ The manual should link to API pages for signatures and overloads, while keeping 
 
 | Header | Manual chapter | API page |
 |---|---|---|
-| `Ippl.h` | @sec-getting-started | [source](../../api/Ippl_8h_source.html) |
-| `Utility/Inform.h` | @sec-getting-started, @sec-communication | [`Inform`](../../api/classInform.html) |
-| `Utility/IpplInfo.h` | @sec-getting-started | [source](../../api/IpplInfo_8h_source.html) |
+| `Ippl.h` | @sec-hello-ippl | [source](../../api/Ippl_8h_source.html) |
+| `Utility/Inform.h` | @sec-hello-ippl, @sec-communication | [`Inform`](../../api/classInform.html) |
+| `Utility/IpplInfo.h` | @sec-hello-ippl | [source](../../api/IpplInfo_8h_source.html) |
 | `Utility/IpplException.h` | @sec-developer-guide | [`IpplException`](../../api/classIpplException.html) |
-| `Utility/IpplTimings.h` | @sec-examples, @sec-performance-portability | [`IpplTimings`](../../api/classIpplTimings.html) |
+| `Utility/IpplTimings.h` | @sec-tests, @sec-performance-portability | [`IpplTimings`](../../api/classIpplTimings.html) |
 | `Index/Index.h`, `Index/NDIndex.h` | @sec-core-concepts | [`Index`](../../api/classippl_1_1Index.html), [`NDIndex`](../../api/classippl_1_1NDIndex.html) |
 | `Region/NDRegion.h`, `Region/PRegion.h` | @sec-core-concepts, @sec-particles | [`NDRegion`](../../api/classippl_1_1NDRegion.html), [`PRegion`](../../api/classippl_1_1PRegion.html) |
 | `Meshes/UniformCartesian.h` | @sec-core-concepts, @sec-fields | [`UniformCartesian`](../../api/classippl_1_1UniformCartesian.html) |

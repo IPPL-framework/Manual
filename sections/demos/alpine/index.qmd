@@ -8,7 +8,7 @@ ALPINE is IPPL's application layer: a collection of plasma-physics **mini-apps**
 
 This chapter explains what those mini-apps are for, how they are organized, and how the **manager hierarchy** keeps application logic separate from reusable PIC infrastructure. We use **Landau damping** as the main walkthrough because it is the smallest complete example; the same pattern applies to the other ALPINE applications.
 
-For the underlying PIC model, see @sec-theory. For gather/scatter and load balancing, see @sec-particle-mesh. For solver options, see @sec-poisson-solvers and the runnable `LandauDamping` example in @sec-examples.
+For the underlying PIC model, see @sec-theory. For gather/scatter and load balancing, see @sec-particle-mesh. For solver options, see @sec-poisson-solvers and the runnable `LandauDamping` example in @sec-tests.
 
 ## What ALPINE mini-apps are
 

@@ -1,0 +1,16 @@
+---
+title: "Introduction"
+subtitle: "Introduction to IPPL"
+---
+
+# Introduction {#sec-introduction}
+<style>
+#sec-introduction > h1 { display: none; }
+</style>
+
+<!-- due to some bug if this section title is the heading of chapter which isnt an acutal chapter but a part, this fails... so we have to work with hardcoded urls [Tests](sections/tests/index.qmd) or double titles like done here ... -->
+
+This chapter introduces the IPPL library, giving an overview of its capabilities and the underlying theory.
+
+- @sec-theory: The theoretical background and mathematical foundations.
+- @sec-overview: An overview of the IPPL framework.
