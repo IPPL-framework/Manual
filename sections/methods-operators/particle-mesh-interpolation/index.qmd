@@ -1,4 +1,5 @@
-# Interpolation in Particle-Mesh methods {#sec-particle-mesh}
+# Particle-Mesh Interpolation {#sec-particle-mesh}
+<!-- # Interpolation in Particle-Mesh methods {#sec-particle-mesh} -->
 
 Particle-mesh workflows combine distributed particles, distributed fields, interpolation, and solvers. The core cycle is common across plasma, accelerator, and astrophysical applications. More concretely, it is the basis of the Particle-in-Cell (PIC) method introduced in @sec-theory.
 

@@ -1,4 +1,8 @@
-# ALPINE Manager Hierarchy {#sec-alpine-manager-hierarchy}
+---
+subtitle: "Demonstration of an IPPL Application Layer using the PIC Manager"
+---
+
+# ALPINE {#sec-alpine-manager-hierarchy}
 
 ALPINE is IPPL's application layer: a collection of plasma-physics **mini-apps** in the `alpine/` directory that run full particle-in-cell (PIC) simulations end to end. They are not isolated library demos. Each mini-app wires together particles, fields, interpolation, Poisson solvers, MPI load balancing, and diagnostics the way a real simulation code would.
 

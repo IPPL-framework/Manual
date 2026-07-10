@@ -1,0 +1,7 @@
+---
+subtitle: "Possible approaches to integrate coulomb collisions into PIC"
+---
+
+# Collisions
+
+TODO:

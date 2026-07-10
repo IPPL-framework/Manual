@@ -1,8 +1,9 @@
 ---
-title: "IPPL Manual"
+unnumbered: true
 number-sections: false
 ---
 
+# Welcome {.unnumbered}
 ::: {.hero}
 ::: {}
 IPPL, the Independent Parallel Particle Layer, is a C++20 library for performance-portable particle, field, and particle-mesh simulations. It provides dimension-independent building blocks for Eulerian, Lagrangian, and hybrid methods on CPUs and GPUs.
@@ -21,8 +22,11 @@ For users:
 
 1. Start with @sec-overview and @sec-getting-started.
 2. Read @sec-core-concepts, then the data model chapters on fields and particles.
+<!-- 2. Read [Core Concepts](sections/core-concepts/index.qmd), then the data model chapters on fields and particles.  -->
 3. Move to FFT, Poisson, Maxwell, or FEM depending on the application.
 4. Use @sec-examples as executable documentation.
+
+
 
 For developers:
 

@@ -1,4 +1,5 @@
-# Getting Started {#sec-getting-started}
+# Hello IPPL {#sec-getting-started}
+<!-- # Getting Started {#sec-getting-started} -->
 
 IPPL is configured with CMake. A minimal build needs a C++20 compiler, MPI, and Kokkos. FFT and solver chapters require builds with `IPPL_ENABLE_FFT=ON` and usually `IPPL_ENABLE_SOLVERS=ON`, but the first program does not need that stack.
 

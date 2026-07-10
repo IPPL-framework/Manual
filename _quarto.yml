@@ -13,24 +13,68 @@ book:
   favicon: figures/ippl-logo.png
   chapters:
     - index.qmd
-    - sections/overview/index.qmd
-    - sections/theory/index.qmd
-    - sections/getting-started/index.qmd
-    - sections/examples/alpine-manager-hierarchy.qmd
-    - sections/core-concepts/index.qmd
-    - sections/fields/index.qmd
-    - sections/particles/index.qmd
-    - sections/particle-mesh/index.qmd
-    - sections/fft/index.qmd
-    - sections/poisson-solvers/index.qmd
-    - sections/maxwell-solvers/index.qmd
-    - sections/fem/index.qmd
-    - sections/communication/index.qmd
-    - sections/performance-portability/index.qmd
-    - sections/examples/index.qmd
-    - sections/developer-guide/index.qmd
-    - sections/api-reference/index.qmd
-    - sections/literature/index.qmd
+
+    - part: "Introduction"
+      chapters:
+        - sections/introduction/theory/index.qmd
+        - sections/introduction/overview/index.qmd
+
+    - part: "Getting Started"
+      chapters:
+        - sections/getting-started/installation/index.qmd
+        - sections/getting-started/hello-ippl/index.qmd
+        - sections/getting-started/slurm/index.qmd
+        
+    - part: "IPPL Core" 
+      chapters:
+        - sections/ippl-core/core-concepts/index.qmd
+        - sections/ippl-core/fields/index.qmd
+        - sections/ippl-core/particles/index.qmd
+        - sections/ippl-core/communication/index.qmd
+
+    - part: "Methods & Operators"
+      chapters:
+        - sections/methods-operators/particle-mesh-interpolation/index.qmd
+        - sections/methods-operators/cg/index.qmd
+        - sections/methods-operators/fft/index.qmd
+        - file: sections/methods-operators/nufft/index.qmd
+          text: "NUFFT"
+        - sections/methods-operators/fem/index.qmd
+
+    - part: "Field Solvers"
+      chapters:
+        - sections/field-solvers/poisson-solvers/index.qmd
+        - sections/field-solvers/maxwell-solvers/index.qmd
+
+    - part: "Analysis & Performance"
+      chapters:
+        - sections/analysis-performance/profiling/index.qmd
+        - sections/analysis-performance/in-situ/index.qmd
+
+    - part: "Demos"
+      chapters:
+        - sections/demos/alpine/index.qmd
+        - sections/demos/alpine-pif/index.qmd
+        - sections/demos/cosmology/index.qmd
+        - sections/demos/collisions/index.qmd
+        - sections/demos/fel/index.qmd
+
+    - part: "Tests"
+      chapters:
+        - sections/tests/index.qmd
+
+    - part: "For Developers"
+      chapters:
+        - sections/for-developers/developer-guide/index.qmd
+        - sections/for-developers/workflow/index.qmd
+        - sections/for-developers/unit-tests/index.qmd
+        - sections/for-developers/performance-portability/index.qmd
+        - sections/for-developers/api-reference/index.qmd
+
+    - part: "Appendix"
+      chapters: 
+        - sections/appendix/literature/index.qmd
+        - sections/appendix/playground/index.qmd
 
 number-sections: true
 number-depth: 3
@@ -39,6 +83,7 @@ format:
   html:
     toc: true
     toc-depth: 3
+    # toc-location: right
     number-sections: true
     html-math-method: mathjax
     code-fold: false
