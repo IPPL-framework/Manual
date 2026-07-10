@@ -1,3 +1,7 @@
+---
+subtitle: "Defining and operating on grid-based field data."
+---
+
 # Fields {#sec-fields}
 
 Fields are distributed mesh data structures. They combine value type, dimension, mesh, layout, and execution space into a single object that supports assignment, expressions, reductions, halo exchange, and boundary conditions.

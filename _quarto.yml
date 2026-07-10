@@ -55,6 +55,11 @@ book:
         - sections/analysis-performance/profiling/index.qmd
         - sections/analysis-performance/in-situ/index.qmd
 
+    - part: sections/tests/index.qmd
+      chapters:
+        - sections/tests/integration-tests/index.qmd
+        - sections/tests/unit-tests/index.qmd
+        
     - part: sections/demos/index.qmd
       chapters:
         - sections/demos/alpine/index.qmd
@@ -62,11 +67,6 @@ book:
         - sections/demos/cosmology/index.qmd
         - sections/demos/collisions/index.qmd
         - sections/demos/fel/index.qmd
-
-    - part: sections/tests/index.qmd
-      chapters:
-        - sections/tests/integration-tests/index.qmd
-        - sections/tests/unit-tests/index.qmd
 
     - part: sections/for-developers/index.qmd
       chapters:

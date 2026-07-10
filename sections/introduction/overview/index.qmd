@@ -1,3 +1,7 @@
+---
+subtitle: "An overview of the IPPL framework."
+---
+
 # Overview {#sec-overview}
 
 IPPL provides reusable components for scientific simulations that need distributed fields, particles, interpolation, FFTs, and solvers. The library is designed around templates for dimension, floating point precision, and execution space, so the same user code can target serial, OpenMP, CUDA, or HIP builds when the backend stack is available.

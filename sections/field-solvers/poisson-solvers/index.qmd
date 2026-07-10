@@ -1,3 +1,7 @@
+---
+subtitle: "Solving Laplace, Poisson, and Biharmonic equations."
+---
+
 # Poisson Solvers {#sec-poisson-solvers}
 
 IPPL provides many different methods for solving the Poisson equation:

@@ -1,3 +1,7 @@
+---
+subtitle: "Differential operators (gradient, divergence, curl, Hessian, Laplacian)."
+---
+
 # Differential Operators {#sec-differential-operators}
 
 IPPL provides a set of differential operators that act on fields. The differential operators use the spacing obtained from the `UniformCartesian` mesh. For example, `laplace` has a pre-factor of `1 / h[d]^2` in each dimension d.

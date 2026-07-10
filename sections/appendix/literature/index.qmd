@@ -1,3 +1,7 @@
+---
+subtitle: "Literature references and bibliography."
+---
+
 # Literature {#sec-literature}
 
 This chapter collects IPPL-related papers, software records, and presentation material used by the manual.

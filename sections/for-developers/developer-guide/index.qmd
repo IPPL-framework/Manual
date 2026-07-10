@@ -1,3 +1,7 @@
+---
+subtitle: "General guidelines for extending IPPL."
+---
+
 # Developer Guide {#sec-developer-guide}
 
 The developer guide documents how to extend IPPL without breaking portability, correctness, or downstream applications.

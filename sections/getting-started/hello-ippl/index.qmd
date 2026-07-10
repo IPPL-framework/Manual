@@ -1,3 +1,7 @@
+---
+subtitle: "A simple Hello World example."
+---
+
 # Hello IPPL {#sec-hello-ippl}
 <!-- # Getting Started {#sec-hello-ippl} -->
 

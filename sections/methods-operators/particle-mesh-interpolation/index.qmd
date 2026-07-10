@@ -1,3 +1,7 @@
+---
+subtitle: "Interpolation between particles and meshes (Gather/Scatter)."
+---
+
 # Particle-Mesh Interpolation {#sec-particle-mesh}
 <!-- # Interpolation in Particle-Mesh methods {#sec-particle-mesh} -->
 

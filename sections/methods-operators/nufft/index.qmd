@@ -1,5 +1,5 @@
 ---
-subtitle: "Non-Uniform Fast Fourier Transform"
+subtitle: "Non-Uniform Fast Fourier Transforms."
 ---
 
 # NUFFT {#sec-nufft}

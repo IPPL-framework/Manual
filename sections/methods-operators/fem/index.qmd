@@ -1,3 +1,7 @@
+---
+subtitle: "Finite Element Methods."
+---
+
 # Finite Elements {#sec-fem}
 
 The Finite Element Method (FEM) is a way to solve partial differential equations which consists of meshing the domain with elements and approximating the solution on these elements. For an intro to FEM, see the following [lecture notes](https://www.iitg.ac.in/mech/documents/128/introfem.pdf), as well as the [FEniCSx documentation](https://jsdokken.com/dolfinx-tutorial/chapter1/fundamentals.html), which shows how to discretize the Poisson equation with the Finite Element Method.

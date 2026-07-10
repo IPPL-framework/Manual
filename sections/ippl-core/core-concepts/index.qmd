@@ -1,3 +1,7 @@
+---
+subtitle: "Core concepts like domains, regions, and indexing."
+---
+
 # Core Concepts {#sec-core-concepts}
 
 IPPL code is parameterized by dimension, value type, memory space, and execution space. This gives user code a compact notation while allowing the library to instantiate high-performance implementations for CPUs and GPUs.

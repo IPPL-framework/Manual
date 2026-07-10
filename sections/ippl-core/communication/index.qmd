@@ -1,3 +1,7 @@
+---
+subtitle: "Parallel communication and MPI wrappers."
+---
+
 # Communication {#sec-communication}
 
 The communication layer wraps MPI concepts used throughout fields, particles, layouts, and solvers. Most users interact with it indirectly through layouts and high-level operations, but developers need the details.

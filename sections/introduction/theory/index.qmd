@@ -1,3 +1,7 @@
+---
+subtitle: "The theoretical background and mathematical foundations."
+---
+
 # Theory {#sec-theory}
 
 IPPL provides the main building blocks for particle-mesh simulations. One such method is the Particle-in-Cell (PIC) method. In this section, we give a brief overview of the physics and numerical theory behind it. For further information, please see [@hockney1988] and [@birdsall2018]. 

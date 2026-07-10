@@ -1,3 +1,7 @@
+---
+subtitle: "Managing particle data and layouts."
+---
+
 # Particles {#sec-particles}
 
 Particles in IPPL are treated as a particle container, which stores particle attributes (such as charge, position, and velocity). Furthermore, it contains layout information, which tells each rank which particles they own according to domain decomposition.

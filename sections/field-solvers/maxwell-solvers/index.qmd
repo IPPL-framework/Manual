@@ -1,3 +1,7 @@
+---
+subtitle: "Solving Maxwell equations."
+---
+
 # Maxwell Solvers {#sec-maxwell-solvers}
 
 While Poisson solvers are appropriate for many use cases of \ac{pic} codes—for example for computation of Coulomb forces between particles in particle accelerator beams (known as space charge)—certain phenomena, such as laser interactions with plasma \cite{birdsallPlasmaPhysicsComputer2018}, are only captured with full electromagnetic simulations. This results in \ac{empic} and requires Maxwell field solvers [@mayani2026massivelyParallelPhd].

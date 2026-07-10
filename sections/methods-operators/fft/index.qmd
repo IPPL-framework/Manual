@@ -1,3 +1,7 @@
+---
+subtitle: "Fast Fourier Transforms."
+---
+
 # FFT {#sec-fft}
 
 The IPPL `FFT` layer is a wrapper for the HeFFTe library, which provides distributed and scalable FFTs for different architectures/backends. FFT support is optional at configure time and should be enabled with `IPPL_ENABLE_FFT=ON`.

@@ -1,3 +1,7 @@
+---
+subtitle: "Executable documentation and examples."
+---
+
 # Integration Tests {#sec-integration-tests}
 
 

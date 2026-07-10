@@ -1,3 +1,7 @@
+---
+subtitle: "Implementation and writing of unit tests."
+---
+
 # Writing Unit Tests {#sec-writing-unit-tests}
 
 The generation of test configurations is implemented in `unit_tests/TestUtils.h`. It is controlled using the following struct:

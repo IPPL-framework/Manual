@@ -1,3 +1,7 @@
+---
+subtitle: "Detailed API reference documentation."
+---
+
 # API Reference {#sec-api-reference}
 
 The manual should not duplicate every class signature. API details should be generated from Doxygen comments in the IPPL source tree.

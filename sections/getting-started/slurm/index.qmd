@@ -1,3 +1,7 @@
+---
+subtitle: "Running IPPL jobs on HPC systems with SLURM."
+---
+
 
 # SLURM Job scripts {#sec-slurm}
 

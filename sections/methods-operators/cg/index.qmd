@@ -1,3 +1,7 @@
+---
+subtitle: "Conjugate Gradient solvers."
+---
+
 # Conjugate Gradient {#sec-cg}
 
 > **!Ported from old Doxygen, review required!**

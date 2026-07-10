@@ -1,3 +1,7 @@
+---
+subtitle: "Strategies for achieving performance portability."
+---
+
 # Performance Portability {#sec-performance-portability}
 
 IPPL's portability model is based on Kokkos execution and memory spaces, MPI for distributed memory, and optional HeFFTe FFT backends. The same algorithmic code path is intended to run across CPU and GPU systems with only compile-time type selection and runtime parameter choices.

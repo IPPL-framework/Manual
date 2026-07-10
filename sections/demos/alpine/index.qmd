@@ -1,5 +1,5 @@
 ---
-subtitle: "Demonstration of an IPPL Application Layer using the PIC Manager"
+subtitle: "The ALPINE application manager hierarchy and PIC mini applications."
 ---
 
 # ALPINE {#sec-alpine-manager-hierarchy}

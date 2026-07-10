@@ -1,3 +1,7 @@
+---
+subtitle: "Interactive browser playground for exploring IPPL features."
+---
+
 # Browser Playground {#sec-playground}
 
 The playground keeps the manual page open while compilation and execution happen in a local Docker container. The first example is deliberately small: edit a `Hello IPPL` program, compile it, run it with MPI, inspect stdout, and edit again.
