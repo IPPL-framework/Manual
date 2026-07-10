@@ -102,6 +102,16 @@ ippl::Index odd(1, 9, 2);  // 1, 3, 5, 7, 9
 
 Useful accessors are `first()`, `last()`, `min()`, `max()`, `length()`, `stride()`, and `empty()`. `Index` also supports range arithmetic such as `I + 1`, `I - 1`, `2 * I`, and `I / 2`, plus geometric operations such as `intersect`, `grow`, `touches`, `contains`, and `split`.
 
+> **!Ported from old Doxygen, review required!**
+
+Given `ippl::Index I(a,n,s)` and an integer `j`, the following operations are possible:
+```cpp
+I+j  : a+j+i*s     // For i in [0..n-1]
+j-I  : j-a-i*s
+j*I  : j*a + i*j*s
+I/j  : a/j + i*s/j // Note: j/I is not defined due to non-uniform stride and fraction prohibition.
+```
+
 ## `NDIndex`
 
 `ippl::NDIndex<Dim>` is a fixed-size container of `Dim` `Index` objects. It describes a rectangular domain in index space.

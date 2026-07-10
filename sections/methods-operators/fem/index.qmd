@@ -16,7 +16,7 @@ Ongoing work: higher-order finite element spaces, and implementation of Raviart-
 
 For information about finite element spaces and their implementation, please see [https://defelement.org/](https://defelement.org/).
 
-![](../../figures/FEMstructure.png){fig-alt="FEM class diagram" width="85%"}
+![](../../../figures/FEMstructure.png){fig-alt="FEM class diagram" width="85%"}
 
 ## Main classes
 

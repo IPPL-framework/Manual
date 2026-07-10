@@ -1,19 +1,21 @@
-# Naming Conventions
+# Workflow
+
+## Naming Conventions
 
 - Variables should use camel casing
 - Compile time constants should use capital casing
 - Member variables should be suffixed with `_m`
 
-# Math
+## Math
 
 Mathematical constants should be obtained from `Kokkos::numbers` (moved out of `experimental` in Kokkos 4). Any instance of a mathematical function in host-only code should use symbols from the standard library, e.g. `std::sqrt`. Any instances occurring in device-code or code that might be run on a device (such as those marked with `KOKKOS_INLINE_FUNCTION`) should use the symbols from Kokkos, e.g. `Kokkos::sqrt`, to ensure performance and portability on GPUs.
 
-# Other Formatting Conventions
+## Other Formatting Conventions
 
 IPPL uses `clang-format` for automatic formatting. For explanations of the available settings, refer to the [clang documentation](https://clang.llvm.org/docs/ClangFormatStyleOptions.html). 
 IPPL's settings are available in the repository root. For more information about the formatting, refer to the workflow below.
 
-# Automatic Code Formatting
+## Automatic Code Formatting
 
 IPPL uses `clang-format` to automatically format the codebase to maintain a consistent code style. When modifying IPPL, the changes can be reformatted automatically by 
 using a *git hook*. A git hook is a script that is executed by `git` before completing certain actions. The `hooks/` top-level directory includes a `pre-commit` script and a 
@@ -23,6 +25,66 @@ effectively creating a pre-commit hook for the local repository. A pre-commit ho
 The provided script automatically runs `clang-format` on all files with *staged* changes, i.e. files that have been added to the commit, then re-stages these files to include 
 the reformatted changes in the commit. The result is that, even if the code is not properly formatted when you run `git commit`, the code is automatically reformatted before the 
 commit is created, so all committed code will always have the proper formatting.
+
+
+## Installing Formatters
+> **!Ported from old Doxygen, review required!**
+
+### 1. Installing clang-format-21
+
+#### Ubuntu/Debian
+Add the LLVM repository and install clang-format-21:
+```bash
+# Add LLVM repository (Ubuntu 20.04+, Debian 11+)
+wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+sudo apt-add-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main"
+sudo apt update
+
+# Install clang-format-21
+sudo apt install clang-format-21
+```
+Verify the installation:
+```bash
+clang-format-21 --version
+```
+Note: If you have `clang-format` installed but it doesn't use the full name `clang-format-21`, then just create a symlink in your `.local` path that redirects `clang-format-21` to your real `clang-format` executable  
+
+#### APPLE macOS Tahoe
+```bash
+brew install llvm@21
+clang-format --version                                                                                               
+```
+
+#### Other Systems
+For other operating systems, visit the [LLVM download page](https://releases.llvm.org/) or use your system's package manager to locate `clang-format` version 21 or later.
+
+### 2. Installing cmake-format
+cmake-format is a Python package available via pip:
+```bash
+# Install cmake-format (Python 3.x required)
+pip install cmake-format
+```
+Verify the installation:
+```bash
+cmake-format --version
+```
+
+## Troubleshooting
+
+### Hook not executing?
+- Verify the script is executable: `chmod +x .git/hooks/pre-commit`
+- Verify the symlink points to the correct location: `ls -la .git/hooks/pre-commit`
+- Ensure `clang-format-21` and `cmake-format` are in your `$PATH`: `which clang-format-21 cmake-format`
+
+### Formatting succeeds locally but hook still rejects?
+This is typically due to:
+- Different `clang-format-21` versions installed (ensure you have version 21)
+- Nested `.clang-format` configuration files in subdirectories that override the root config
+
+### Path issues on HPC systems?
+If you're on a shared HPC system where multiple compiler modules are available:
+- Load the correct module before working: `module load llvm/21` or similar
+- Create a symlink to `clang-format` in `~/.local/bin` if module loading is inconvenient
 
 ## Caveats
 

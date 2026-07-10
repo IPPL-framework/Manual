@@ -208,6 +208,25 @@ bunch.create(nloc);
 The same rule applies after `if` branches: if one code path calls `update()`, every rank must take a path that also calls `update()` (or none must). Avoid `return` on one rank before a collective while others continue.
 
 
+
+### Interpolation between Grid and Particles
+> **!Ported from old Doxygen, review required!**
+
+Methods for data transfer between particles and grid, supporting operations like scatter and gather for efficient particle-field interaction.
+```cpp
+// Particles -> grid
+// Can interpolate any particle attribute (both scalar and vectors) to the grid.
+// Only linear (cloud-in-cell) interpolation is available at the moment.
+// Interpolate a scalar particle attribute q (e.g. charge) onto the field rho.
+scatter(bunch.q, rho, bunch.R);
+
+// Grid -> particles
+// Can interpolate any field (both scalar and vectors) to the particles.
+// Only linear interpolation is available at the moment.
+// Interpolate a vector field E (e.g. electric field) to the particles
+gather(bunch.E, Efield, bunch.R);
+```
+
 ## Particle boundary conditions
 
 Particle boundary conditions are selected with the `ippl::BC` enum:

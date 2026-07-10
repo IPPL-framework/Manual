@@ -254,6 +254,52 @@ field.fillHalo();
 
 Field operations that require neighbor values call `fillHalo` internally. For custom kernels, users must decide whether the operation needs only owned cells of the MPI rank or also ghost cells. If the kernel needs neighbors across rank boundaries, e.g. for stencil operations, call `fillHalo()` and apply boundary conditions first.
 
+
+## Useful Field Functions
+
+> **!Ported from old Doxygen, review required!**
+
+### Field Properties
+
+```cpp
+// Returns the range policy for the fields excluding the ghosts layers.
+// If you want to include ghost layers specify nghost as an argument
+auto fieldRange = field.getFieldRangePolicy();
+
+// Return the number of ghost layers in the field
+auto nghost = field.getNghost();
+
+// Returns the underyling field layout
+auto layout = field.getLayout();
+
+// Get the local n-dimension indices from the field layout
+auto lDom = layout.getLocalNDIndex();
+
+// Get the global domain indices from the field layout
+auto gDom = layout.getDomain();
+
+// Shallow copy of fields. Changing field2 changes field1 also.
+auto field2 = field1;
+
+// Deep copy of fields. Changing field2 does not change field1.
+auto field2 = field1.deepCopy();
+```
+
+### Parallel Helper Functions
+
+```cpp
+// Return the underyling Kokkos View of the field
+auto fview = field.getView();
+
+// Return the Host Mirror corresponding to the Kokkos device view
+// of the field. It is a no-op if the field is already on the host.
+auto fHostView = field.getHostMirror();
+
+// You still have to do a deep copy to get the data from the device to host or vice-versa
+Kokkos::deep_copy(fHostView, fview); // device to host
+Kokkos::deep_copy(fview, fHostView); // host to device
+```
+
 ## Expressions and reductions
 
 Fields support scalar assignment, field expressions, math functions, and reductions. The unit tests exercise:
@@ -265,6 +311,8 @@ Fields support scalar assignment, field expressions, math functions, and reducti
 | arithmetic | `rho = rho - exact;` |
 | sum | `double q = rho.sum();` |
 | norm | `double err = norm(rho) / norm(exact);` |
+| dot product | `field = dot(vfield, vfield);` |
+| inner product | `double val = innerProduct(field, field);` |
 | volume integral | `rho.getVolumeIntegral();` |
 | volume average | `rho.getVolumeAverage();` |
 | gradient | `efield = grad(phi);` |

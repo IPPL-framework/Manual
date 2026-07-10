@@ -248,3 +248,89 @@ cd $HOME/build/ippl
 # run cmake (note that ninja is available in the uenv and "cmake -G Ninja" can be used)
 cmake --preset=release-testing -DCMAKE_INSTALL_PREFIX=$HOME/apps/ippl -DCMAKE_CUDA_ARCHITECTURES=90 $HOME/src/ippl/
 ```
+
+
+## EULER
+> **!Ported from old Doxygen, review required!**
+
+This guide outlines the steps to install the IPPL library on the EULER cluster. Before beginning, ensure you are connected to the ETH-VPN to access the cluster.
+
+### Connecting to the EULER Cluster
+
+Use SSH to connect to EULER. Replace `<username>` with your actual username.
+```bash
+ssh -Y <username>@euler.ethz.ch
+```
+The `-Y` flag enables trusted X11 forwarding, necessary for running graphical applications remotely.
+
+### Preparing the Environment
+
+*Load the New Software Stack:* Transition to the new software stack to access the latest dependencies:
+```bash
+env2lmod
+```
+
+*Clean the Environment:* Ensure no previous modules are loaded to avoid conflicts:
+```bash
+module purge
+```
+
+*Load Dependencies:* Load the required modules for IPPL:
+```bash
+module load gcc/11.4.0 cmake/3.26.3 cuda/12.1.1 openmpi/4.1.4
+```
+
+### Cloning the IPPL Library
+
+Clone the IPPL library from its repository:
+```bash
+git clone https://github.com/IPPL-framework/ippl.git
+```
+
+### Building IPPL
+
+#### Setup a build directory:
+```bash
+cd ippl
+mkdir build
+cd build
+```
+
+#### Create build files
+
+Choose from the following options based on your needs. If necessary, you can build multiple versions in separate directories.
+
+**Serial Version** (for single-node computing)
+```bash
+cmake .. -DCMAKE_CXX_STANDARD=20 -DIPPL_PLATFORMS=SERIAL -DIPPL_ENABLE_SOLVERS=ON -DIPPL_ENABLE_FFT=ON -DIPPL_ENABLE_ALPINE=ON
+```
+
+**OpenMP Version** (for multi-threaded computing):
+```bash
+cmake .. -DCMAKE_CXX_STANDARD=20 -DIPPL_PLATFORMS=OPENMP -DIPPL_ENABLE_SOLVERS=ON -DIPPL_ENABLE_FFT=ON -DIPPL_ENABLE_ALPINE=ON
+```
+
+**Cuda Version** (for GPU computing):
+```bash
+cmake .. -DCMAKE_CXX_STANDARD=20 -DIPPL_PLATFORMS=CUDA -DIPPL_ENABLE_SOLVERS=ON -DIPPL_ENABLE_FFT=ON -DIPPL_ENABLE_ALPINE=ON -DIPPL_USE_ALTERNATIVE_VARIANT=OFF -DKokkos_ARCH_[architecture]=ON
+```
+`[architecture]` should be the target architecture, e.g.
+- `PASCAL60`
+- `VOLTA70`
+- `TURING75`
+- `AMPERE80`
+
+#### Compile
+```bash
+make
+```
+
+### Testing Your Installation
+
+Launch an interactive job on EULER to test your installation:
+```bash
+srun -n 1 --time=1:00:00 --mem-per-cpu=32g --pty bash
+```
+This command allocates one computing node with 32GB of RAM for 60 minutes.
+
+**Task** : Execute a miniapp in the `/alpine` folder to verify the installation (don't forget to compile with Make).
