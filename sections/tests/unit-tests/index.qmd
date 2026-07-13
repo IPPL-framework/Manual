@@ -81,3 +81,23 @@ By instantiating unit tests for all possible combinations of execution spaces of
 ... TypeParam = Parameters<double, Kokkos::OpenMP, Kokkos::OpenMP, Rank<4u> >
 ... TypeParam = Parameters<float, Kokkos::OpenMP, Kokkos::OpenMP, Rank<4u> >
 ```
+
+
+
+## Running Unit tests
+
+To run all unit tests, you can use the following script:
+
+```bash
+#!/bin/bash
+
+for file in `find $1/unit_tests -type f`
+do
+    if [[ -x "$file" ]]
+    then
+        $file
+    fi
+done
+```
+
+The first argument needs to point to the directory where you built IPPL.
