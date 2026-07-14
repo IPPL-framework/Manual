@@ -1,0 +1,18 @@
+---
+title: "Methods & Operators"
+subtitle: "IPPL Methods and Operators"
+---
+
+# Methods & Operators {#sec-methods-operators}
+<style>
+#sec-methods-operators > h1 { display: none; }
+</style>
+
+This chapter discusses numerical methods and operators available in IPPL for manipulating fields and particles.
+
+- @sec-particle-mesh: Interpolation between particles and meshes (Gather/Scatter).
+- @sec-differential-operators: Differential operators (gradient, divergence, curl, Hessian, Laplacian).
+- @sec-cg: Conjugate Gradient solvers.
+- @sec-fft: Fast Fourier Transforms.
+- @sec-nufft: Non-Uniform Fast Fourier Transforms.
+- @sec-fem: Finite Element Methods.

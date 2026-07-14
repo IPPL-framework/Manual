@@ -1,0 +1,17 @@
+---
+title: "IPPL Core"
+subtitle: "IPPL's core data structures"
+---
+
+# IPPL Core {#sec-ippl-core}
+<style>
+#sec-ippl-core > h1 { display: none; }
+</style>
+
+
+This chapter covers the fundamental abstractions in IPPL, including domains, fields, particles, and communication.
+
+- @sec-core-concepts: Core concepts like domains, regions, and indexing.
+- @sec-fields: Defining and operating on grid-based field data.
+- @sec-particles: Managing particle data and layouts.
+- @sec-communication: Parallel communication and MPI wrappers.

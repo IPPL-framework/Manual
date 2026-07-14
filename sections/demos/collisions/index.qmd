@@ -1,0 +1,7 @@
+---
+subtitle: "Approaches to integrate coulomb collisions into PIC."
+---
+
+# Collisions {#sec-demo-collisions}
+
+TODO:

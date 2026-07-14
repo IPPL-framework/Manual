@@ -1,0 +1,38 @@
+---
+title: "Tests"
+subtitle: "Test executables to check integration and scalings of IPPL components."
+---
+
+# Tests {#sec-tests}
+<style>
+#sec-tests > h1 { display: none; }
+</style>
+
+
+This part covers the test executables and mini-applications used to verify the correctness, integration, and scaling performance of IPPL components.
+
+- @sec-integration-tests: Executable documentation and examples.
+- @sec-unit-tests: Overview of the unit test configurations.
+
+
+
+## Initial example set
+
+| Example | Source location | Manual purpose |
+|---|---|---|
+| Hello world | Doxygen extras and minimal program | Runtime lifecycle and communicator basics. |
+| PIC test | `test/particle/PICnd.cpp` | End-to-end particle-mesh loop. |
+| Landau damping | `alpine/LandauDamping.cpp` | Production-style manager and PIC mini-app. |
+| Gaussian Poisson | `test/solver/TestGaussian.cpp` | Solver setup and convergence verification. |
+| Maxwell FDTD | `test/maxwell` | Electromagnetic solver setup. |
+| P3M heating | `examples/collisions/P3MHeating.cpp` | Collision/P3M application pattern. |
+| Cosmology | `cosmology/StructureFormation.cpp` | Particle-mesh gravity workflow. |
+| Field boundary conditions | `test/field/TestFieldBC.cpp` | Mixed face boundary-condition setup. |
+| Laplace field operator | `test/field/TestLaplace.cpp` | Differential operator, periodic BCs, and error reduction. |
+| FFT CC/RC transforms | `test/FFT/TestFFTCC.cpp`, `test/FFT/TestFFTRC.cpp` | Forward/backward transform consistency. |
+| FFT sine/cosine transforms | `test/FFT/TestSine.cpp`, `test/FFT/TestCos.cpp`, `test/FFT/TestCos1.cpp` | Real in-place spectral transforms. |
+| Periodic Poisson | `test/solver/TestFFTPeriodicPoissonSolver.cpp` | Periodic FFT solver with manufactured solution. |
+| Open Poisson sphere | `test/solver/TestSphere.cpp` | Open-boundary gravitational sphere verification. |
+| FEM Lagrange spaces | `unit_tests/FEM/LagrangeSpace.cpp`, `test/solver/fem/TestZeroBC_sin*` | Scalar FEM basis, assembly, and convergence verification. |
+| FEM Nedelec spaces | `unit_tests/FEM/NedelecSpace.cpp`, `test/solver/fem/TestMaxwellDiffusion*` | Edge-element basis, curl operators, and Maxwell diffusion. |
+| Maxwell FDTD | `test/maxwell` | Standard and non-standard FDTD setup and time stepping. |

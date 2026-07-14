@@ -1,0 +1,229 @@
+---
+subtitle: "Conjugate Gradient solvers."
+---
+
+# Conjugate Gradient {#sec-cg}
+
+> **!Ported from old Doxygen, review required!**
+
+IPPL provides a Conjugate Gradient (CG) solver for the Poisson equation, `ippl::PoissonCG`.
+
+## Using the CG Solver
+
+This section shows how to use the CG solver. To start we define the mesh and the field types:
+```cpp
+using Mesh_t      = ippl::UniformCartesian<double, 3>;
+using Centering_t = Mesh_t::DefaultCentering;
+typedef ippl::Field<double, Dim, Mesh_t, Centering_t> field;
+typedef ippl::Field<ippl::Vector<double, Dim>, Dim, Mesh_t, Centering_t> fieldV;
+
+
+// .... Define the mesh and the field types .... //
+
+
+// define the R (rho) field
+field exact, rho;
+exact.initialize(mesh, layout);
+rho.initialize(mesh, layout);
+
+// define the Vector field E (LHS)
+fieldV exactE, fieldE;
+exactE.initialize(mesh, layout);
+fieldE.initialize(mesh, layout);
+```
+
+Then we define the solver type we want to use:
+```cpp
+using Solver_t = ippl::PoissonCG<field, fieldV>;
+```
+
+We define the parameters to pass to the solver. Consider the not declared variable to be your choice for your own simulation:
+```cpp
+// Parameter List to pass to solver
+ippl::ParameterList params;
+
+// Set the parameters
+// ... CG specific parameters here ...
+```
+
+Now we can define the solver object and solve the Poisson equation:
+```cpp
+Solver_t cgSolver(fieldE, rho, params);
+cgSolver.solve();
+```
+The potential is stored in the `rho` Field. The E-Field is stored in the `fieldE` Field.
+
+
+## Using a Preconditioner 
+
+If you want to precondition the solver you can add following parameters to the parameter list:
+```cpp
+// Define the preconditioner type (jacobi, newton, chebyshev, richardson or gauss_seidel)
+params.add("preconditioner_type", preconditioner_type);
+// Define the gauss_seidel parameters
+params.add("gauss_seidel_inner_iterations", gauss_seidel_inner_iterations);
+params.add("gauss_seidel_outer_iterations", gauss_seidel_outer_iterations);
+// Define the newton parameters
+params.add("newton_level", newton_level);
+// Define the chebyshev parameters
+params.add("chebyshev_degree", chebyshev_degree);
+// Define the richardson parameters
+params.add("richardson_iterations", richardson_iterations);
+// Define the communication parameters (needed for richardson and gauss_seidel)
+params.add("communication", communication);
+// Merge the parameters
+solver.mergeParameters(params);
+```
+
+## Creating a Custom Solver
+
+Here, we'll provide detailed guidelines on how to extend the base class of the `SolverAlgorithm` to develop your own solver algorithm, using the PCG (Preconditioned Conjugate Gradient) solver as an example.
+
+### Introduction to SolverAlgorithm Base Class
+
+The `SolverAlgorithm` class is a template abstract class designed to serve as a foundation for various numerical solver algorithms. It provides a common interface for solving problems of the form `Op(lhs) = rhs`, where `Op` is a differential operator and `lhs` and `rhs` are fields.
+
+**Key Components of SolverAlgorithm**
+- Template Parameters: The class template parameters `FieldLHS` and `FieldRHS` define the types for the left-hand side (LHS) and right-hand side (RHS) of the equation respectively.
+- Virtual Function: The `operator()` function is a pure virtual function that must be implemented by derived classes. It is where the main logic of the solver is implemented.
+
+```cpp
+#include <functional>
+#include "Utility/ParameterList.h"
+
+namespace ippl {
+    template <typename FieldLHS, typename FieldRHS>
+    class SolverAlgorithm {
+    public:
+        using lhs_type = FieldLHS;
+        using rhs_type = FieldRHS;
+
+        /*!
+         * Solve the problem described by Op(lhs) = rhs, where Op is an unspecified
+         * differential operator (handled by derived classes)
+         * @param lhs The problem's LHS
+         * @param rhs The problem's RHS
+         * @param params A set of parameters for the solver algorithm
+         */
+        virtual void operator()(lhs_type& lhs, rhs_type& rhs, const ParameterList& params) = 0;
+    };
+}
+```
+
+### Steps to Create a Custom Solver
+
+**1. Define the Solver Class**
+
+Start by defining your solver class that inherits from `SolverAlgorithm`. Specify any additional data members or methods needed for your solver.
+
+```cpp
+#include "SolverAlgorithm.h"
+
+template <typename FieldLHS, typename FieldRHS = FieldLHS>
+class MySolver : public ippl::SolverAlgorithm<FieldLHS, FieldRHS> {
+    using Base = ippl::SolverAlgorithm<FieldLHS, FieldRHS>;
+public:
+    // Additional methods or data members here
+};
+```
+
+**2. Implement the Solver Logic**
+
+Implement the `operator()` function, which contains the core logic for the solver. This function should use the provided `lhs`, `rhs`, and `params` to compute the solution to the problem.
+
+```cpp
+void operator()(typename Base::lhs_type& lhs, typename Base::rhs_type& rhs, const ParameterList& params) override {
+    // Initialization and setup
+    // Iterative solution process
+    // Post-processing and cleanup
+}
+```
+
+## Creating a Custom Preconditioner
+
+The preconditioner class in the IPPL framework serves as an abstract base class for different preconditioning strategies applied in iterative solvers. It encapsulates common functionalities and interfaces that are essential for all types of preconditioners.
+
+**Structure of the Preconditioner Base Class**
+
+- Template Parameter: The class template `Field` determines the type of the numerical field the preconditioner will operate on.
+- Constructor: Constructors initialize the preconditioner, optionally setting a type name to identify the preconditioner strategy.
+- Virtual Function (`operator()`): This is a pure virtual function in the base class that must be implemented by derived classes to define the specific preconditioning behavior.
+
+### Steps to Create a Custom Preconditioner
+
+**Step 1: Define the Preconditioner Class**
+
+Begin by defining a new class that inherits from the `preconditioner<Field>` provided by the IPPL framework. This new class should implement all abstract methods from the base class and can add additional members as needed for its specific strategy.
+
+```cpp
+template <typename Field>
+struct custom_preconditioner : public preconditioner<Field> {
+    // Additional member variables here
+
+    custom_preconditioner(std::string name = "Custom") : preconditioner<Field>(name) {
+        // Initialization code here
+    }
+
+    Field operator()(Field& u) override {
+        // Implementation of preconditioning logic here
+        return u; // Placeholder return
+    }
+};
+```
+
+**Step 2: Implement the Constructor**
+
+Use the constructor of your custom preconditioner to initialize any data members and forward any necessary parameters to the base class constructor, which sets the type name of the preconditioner.
+
+**Step 3: Override the Operator Function**
+
+Implement the `operator()` function to apply your preconditioning logic to the input field. This method is crucial as it defines how the preconditioner modifies the input data, aligning with the specific algorithmic needs of your solver.
+
+### Example Implementations
+
+**Jacobi Preconditioner**
+
+The `jacobi_preconditioner` provided by IPPL is a derived class of preconditioner. It implements a specific preconditioning strategy using an inverse diagonal matrix and a damping factor. Here is how it extends the base class:
+
+```cpp
+template <typename Field, typename InvDiagF>
+struct jacobi_preconditioner : public preconditioner<Field> {
+    InvDiagF inverse_diagonal_m;
+    double w_m;  // Damping factor
+
+    jacobi_preconditioner(InvDiagF&& inverse_diagonal, double w = 1.0)
+        : preconditioner<Field>("Jacobi"), inverse_diagonal_m(std::move(inverse_diagonal)), w_m(w) {}
+
+    Field operator()(Field& u) override {
+        typename Field::mesh_type& mesh = u.get_mesh();
+        typename Field::layout_type& layout = u.getLayout();
+        Field res(mesh, layout);
+
+        res = inverse_diagonal_m(u);  // Apply inverse diagonal matrix
+        res = w_m * res;              // Apply damping factor
+        return res;
+    }
+};
+```
+
+**Scaling Preconditioner**
+
+A simple example of a custom preconditioner that scales the input field can be structured as follows:
+
+```cpp
+template <typename Field>
+struct scaling_preconditioner : public preconditioner<Field> {
+    double scale_factor;
+
+    scaling_preconditioner(double factor = 1.0)
+        : preconditioner<Field>("Scaling"), scale_factor(factor) {}
+
+    Field operator()(Field& u) override {
+        return scale_factor * u; // Scales the input field
+    }
+};
+```
+
+**Integration with Solvers**
+
+To utilize your custom preconditioner in a solver, instantiate it and configure the solver to use it.

@@ -1,0 +1,7 @@
+---
+subtitle: "Cosmology and structure formation."
+---
+
+# Cosmology {#sec-demo-cosmology}
+
+TODO:

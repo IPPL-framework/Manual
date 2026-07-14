@@ -1,0 +1,17 @@
+---
+title: "Demos"
+subtitle: "Applications and Demos of IPPL"
+---
+
+# Demos {#sec-demos}
+<style>
+#sec-demos > h1 { display: none; }
+</style>
+
+This chapter showcases various applications and demonstrations built using the IPPL framework.
+
+- @sec-alpine-manager-hierarchy: The ALPINE application manager hierarchy and PIC mini applications.
+- @sec-demo-alpine-pif: Demonstration of the Particle in Fourier Method.
+- @sec-demo-cosmology: Cosmology and structure formation.
+- @sec-demo-collisions: Approaches to integrate coulomb collisions into PIC.
+- @sec-demo-fel: Simulation of a Free-Electron-Laser Undulator.

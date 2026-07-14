@@ -1,0 +1,81 @@
+---
+subtitle: "Running IPPL jobs on HPC systems with SLURM."
+---
+
+
+# SLURM Job scripts {#sec-slurm}
+
+You can use the following example job scripts to run on the local PSI computing cluster, which uses slurm.
+More documentation on the local cluster can be found [here](https://lsm-hpce.gitpages.psi.ch/merlin6/introduction.html) (need to be in the PSI network to access).
+
+## Merlin CPU (MPI + OpenMP)
+For example, to run a job on 1 MPI node, with 44 OpenMP threads:
+```
+#!/bin/bash
+#SBATCH --partition=hourly      # Using 'hourly' will grant higher priority
+#SBATCH --nodes=1               # No. of nodes
+#SBATCH --ntasks-per-node=1     # No. of MPI ranks per node. Merlin CPU nodes have 44 cores
+#SBATCH --cpus-per-task=44      # No. of OMP threads
+#SBATCH --time=00:05:00         # Define max time job will run (e.g. here 5 mins)
+#SBATCH --hint=nomultithread    # Without hyperthreading
+##SBATCH --exclusive            # The allocations will be exclusive if turned on (remove extra hashtag to turn on)
+
+#SBATCH --output=<output_file_name>.out  # Name of output file
+#SBATCH --error=<error_file_name>.err    # Name of error file
+
+export OMP_NUM_THREADS=44
+export OMP_PROC_BIND=spread
+export OMP_PLACES=threads
+
+# need to pass the --cpus-per-task option to srun otherwise will not use more than 1 core per task
+# (see https://lsm-hpce.gitpages.psi.ch/merlin6/known-problems.html#sbatch-using-one-core-despite-setting--ccpus-per-task)
+
+srun --cpus-per-task=44 ./<your_executable> <args>
+```
+
+## Gwendolen GPU
+For example, to run a job on 4 GPUs (max on Gwendolen is 8 GPUs, which are all on a single node):
+```
+#!/bin/bash
+#SBATCH --time=00:05:00         # Define max time job will run (e.g. here 5 mins)
+#SBATCH --nodes=1               # No. of nodes (there is only 1 node on Gwendolen)
+#SBATCH --ntasks=4              # No. of tasks (max. 8)
+#SBATCH --clusters=gmerlin6     # Specify that we are running on the GPU cluster
+#SBATCH --partition=gwendolen   # Running on the Gwendolen partition of the GPU cluster
+#SBATCH --account=gwendolen
+##SBATCH --exclusive            # The allocations will be exclusive if turned on (remove extra hashtag to turn on)
+#SBATCH --gpus=4                # No. of GPUs (max. 8)
+
+#SBATCH --output=<output_file_name>.out  # Name of output file
+#SBATCH --error=<error_file_name>.err    # Name of error file
+
+srun ./<your_executable> <args> --kokkos-map-device-id-by=mpi_rank
+```
+## LUMI GPU partition
+For example, to run a job on 8 nodes with 8 GPUs each:
+```
+#!/bin/bash
+#SBATCH --job-name=TestGaussian
+#SBATCH --error=TestGaussian-%j.error
+#SBATCH --output=TestGaussian-%j.out
+#SBATCH --partition=dev-g  # partition name
+#SBATCH --time=00:10:00
+#SBATCH --nodes 8
+#SBATCH --ntasks-per-node=8     # 8 MPI ranks per node, 64 total (8x8)
+#SBATCH --gpus-per-node=8       # Allocate one gpu per MPI rank per node
+#SBATCH --account=project_xxx
+#SBATCH --hint=nomultithread
+module load  LUMI/24.03 partition/G cpeAMD rocm buildtools/24.03
+CPU_BIND="map_cpu:49,57,17,25,1,9,33,41"
+export MPICH_GPU_SUPPORT_ENABLED=1
+ulimit -s unlimited
+export EXE_DIR=/users/adelmann/sandbox/vico-paper/build/test/solver
+cat << EOF > select_gpu
+#!/bin/bash
+export ROCR_VISIBLE_DEVICES=\$SLURM_LOCALID
+exec \$*
+EOF
+chmod +x ./select_gpu
+srun ./select_gpu ${EXE_DIR}/TestGaussian 1024 1024 1024 pencils a2av no-reorder HOCKNEY --info 5
+rm -rf ./select_gpu
+```
