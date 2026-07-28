@@ -55,9 +55,18 @@ The public URL `https://IPPL-framework.github.io/Manual/` assumes this repositor
 - `index.qmd`: manual landing page.
 - `sections/*/index.qmd`: chapter sources.
 - `references.bib`: IPPL literature and software records.
+- `tools/update_contributors.py`: generates the contributor appendix from IPPL's `CONTRIBUTORS.md`.
 - `figures/`: manual image assets.
 - `docs/`: rendered HTML output.
 
 ## Documentation approach
 
 The manual explains workflows, concepts, examples, and design contracts for IPPL users and developers. Exact C++ signatures should remain in Doxygen comments in the IPPL source tree and be linked from the API reference chapter.
+
+Contributor information is maintained in IPPL's `CONTRIBUTORS.md`. The manual contributor appendix is generated from that file automatically by the Quarto pre-render hook:
+
+```bash
+IPPL_SOURCE_DIR=/Users/adelmann/git/ippl quarto render
+```
+
+Bibliographic records remain in `references.bib` when a work is cited by the manual. A thesis, paper, or report may therefore appear both in `CONTRIBUTORS.md` as a contributor reference and in `references.bib` as a citable source.

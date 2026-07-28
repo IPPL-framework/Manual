@@ -1,6 +1,8 @@
 project:
   type: book
   output-dir: docs
+  pre-render:
+    - tools/update_contributors.py
 
 book:
   title: "IPPL Manual"
@@ -79,6 +81,7 @@ book:
     - part: sections/appendix/index.qmd
       chapters: 
         - sections/appendix/literature/index.qmd
+        - sections/appendix/contributors/index.qmd
         - sections/appendix/playground/index.qmd
 
 number-sections: true

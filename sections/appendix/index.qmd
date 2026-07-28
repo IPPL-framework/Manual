@@ -8,7 +8,8 @@ subtitle: "Supplementary Material"
 #sec-appendix > h1 { display: none; }
 </style>
 
-This chapter contains supplementary materials, literature references, and a playground for exploring IPPL.
+This chapter contains supplementary materials, literature references, contributor information, and a playground for exploring IPPL.
 
 - @sec-literature: Literature references and bibliography.
+- @sec-contributors: Contributor information generated from IPPL's `CONTRIBUTORS.md`.
 - @sec-playground: Interactive browser playground for exploring IPPL features.
