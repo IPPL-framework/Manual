@@ -25,6 +25,10 @@ def default_source() -> Path:
     if local_checkout.exists():
         return local_checkout
 
+    ci_checkout = REPO_ROOT / "ippl-src" / "CONTRIBUTORS.md"
+    if ci_checkout.exists():
+        return ci_checkout
+
     return REPO_ROOT.parent / "ippl" / "CONTRIBUTORS.md"
 
 

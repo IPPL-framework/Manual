@@ -40,6 +40,8 @@ jobs:
 
       - name: Render manual
         run: quarto render . --to html
+        env:
+          IPPL_SOURCE_DIR: ${{ github.workspace }}/ippl-src
 
       - name: Render API reference
         run: doxygen Doxyfile.api
