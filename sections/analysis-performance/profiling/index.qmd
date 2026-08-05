@@ -125,6 +125,8 @@ In certain applications, you might want to use profiling tools for debugging and
 
 This guide explains how to use Kokkos' profiling tools, using the **MemoryEvents** tool as an example.
 
+Build Kokkos Tools against a toolchain and Kokkos version compatible with the IPPL executable being profiled. The current IPPL baseline is Kokkos 5.2.0, so profiling libraries should be built from a Kokkos Tools revision that supports the Kokkos 5.2 tools interface and the same backend stack (CUDA, HIP, OpenMP, or Serial) used by the application.
+
 ### Description of MemoryEvents
 
 MemoryEvents tracks a timeline of allocation and deallocation events in Kokkos Memory Spaces. It records time, pointer, size, memory-space-name, and allocation-name. This is in particular useful for debugging purposes to understand where all the memory is going.
@@ -198,9 +200,14 @@ Consider the following code:
 ```cpp
 #include <Kokkos_Core.hpp>
 
-  typedef Kokkos::View<int*,Kokkos::CudaSpace> a_type;
-  typedef Kokkos::View<int*,Kokkos::CudaUVMSpace> b_type;
-  typedef Kokkos::View<int*,Kokkos::CudaHostPinnedSpace> c_type;
+  using device_memory = Kokkos::DefaultExecutionSpace::memory_space;
+  typedef Kokkos::View<int*, device_memory> a_type;
+  typedef Kokkos::View<int*, Kokkos::HostSpace> b_type;
+#ifdef KOKKOS_ENABLE_CUDA
+  typedef Kokkos::View<int*, Kokkos::CudaHostPinnedSpace> c_type;
+#else
+  typedef Kokkos::View<int*, Kokkos::HostSpace> c_type;
+#endif
 
 int main() {
   Kokkos::initialize();
@@ -223,7 +230,7 @@ int main() {
 }
 ```
 
-This will produce the following output:
+This produces output similar to the following. Exact memory-space names depend on the configured Kokkos 5.2.0 backend and enabled memory spaces.
 
 **HOSTNAME-PROCESSID.mem_events**
 

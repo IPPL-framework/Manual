@@ -6,7 +6,8 @@ subtitle: "Contributor registry generated from IPPL."
 
 ::: {.callout-note}
 This page is generated from IPPL's `CONTRIBUTORS.md`.
-Edit the source file in the IPPL repository, then this page is regenerate automatically.
+Edit the source file in the IPPL repository, then regenerate this page with
+`python3 tools/update_contributors.py`.
 :::
 
 ## Current Developers and Maintainers

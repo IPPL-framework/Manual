@@ -22,12 +22,11 @@ cmake \
     -DKokkos_ARCH_AMPERE80=ON \
     -DKokkos_ENABLE_OPENMP=ON \
     -DKokkos_ENABLE_CUDA=ON \
-    -DKokkos_ENABLE_CUDA_LAMBDA=ON \
     -DKokkos_ENABLE_CUDA_UVM=OFF \
     kokkos
 ```
 
-This compiles Kokkos to include support for OpenMP and CUDA as accelerators. All Kokkos kernels can thus use either of these execution spaces. In this case, each individual unit test is compiled 24 times: once for each possible combination of precision, rank, and execution space. This is visible in the first few lines of output:
+This compiles Kokkos to include support for OpenMP and CUDA as accelerators. With the Kokkos 5.2.0 baseline, IPPL does not need to request `Kokkos_ENABLE_CUDA_LAMBDA` explicitly. All Kokkos kernels can thus use either of these execution spaces. In this case, each individual unit test is compiled 24 times: once for each possible combination of precision, rank, and execution space. This is visible in the first few lines of output:
 ```
 [==========] Running 192 tests from 24 test suites.
 [----------] Global test environment set-up.

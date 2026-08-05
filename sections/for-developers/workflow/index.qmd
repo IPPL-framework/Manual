@@ -12,7 +12,7 @@ subtitle: "Development workflow and tools."
 
 ## Math
 
-Mathematical constants should be obtained from `Kokkos::numbers` (moved out of `experimental` in Kokkos 4). Any instance of a mathematical function in host-only code should use symbols from the standard library, e.g. `std::sqrt`. Any instances occurring in device-code or code that might be run on a device (such as those marked with `KOKKOS_INLINE_FUNCTION`) should use the symbols from Kokkos, e.g. `Kokkos::sqrt`, to ensure performance and portability on GPUs.
+Mathematical constants should be obtained from `Kokkos::numbers`, which is the supported namespace for the current Kokkos 5.2.0 baseline. Any instance of a mathematical function in host-only code should use symbols from the standard library, e.g. `std::sqrt`. Any instances occurring in device-code or code that might be run on a device (such as those marked with `KOKKOS_INLINE_FUNCTION`) should use the symbols from Kokkos, e.g. `Kokkos::sqrt`, to ensure performance and portability on GPUs.
 
 ## Other Formatting Conventions
 
@@ -120,5 +120,4 @@ For those in need of a refresher or an introduction, here is a glossary of Git t
 - Before committing, changes have to be *staged*. This is done by running `git add` to stage the changes that need to be committed. You can view the staged changes using `git diff --staged`. This represents the changes that will be recorded by running `git commit`.
 - You can stage any subset of the changes to the working tree. You can also stage only a subset of changes to a file by using *interactive staging* with `git add -i` and choosing "patch" at the interactive prompt.
 - A *commit* is a set of changes that constitute a fixed point in the repository history. Running `git commit` creates a new commit out of the staged changes. Unstaged changes are untouched.
-
 
