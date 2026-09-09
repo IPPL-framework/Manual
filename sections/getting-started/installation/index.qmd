@@ -26,6 +26,7 @@ cmake <src_dir> -D<option>=<value>
 The relevant options of IPPL are
 - IPPL_PLATFORMS, can be one of `SERIAL, OPENMP, CUDA, "OPENMP;CUDA"`, default `SERIAL`
 - `Kokkos_VERSION`, default `5.2.0`
+- `IPPL_ENABLE_KOKKOS_KERNELS`, default `OFF`
 - `Heffte_VERSION`, default `2.4.0`
   - If set to `MASTER`, an additional flag `Heffte_COMMIT_HASH` can be set, default `9eab7c0eb18e86acaccc2b5699b30e85a9e7bdda`
   - Currently, this is the only compatible commit of Heffte
@@ -49,6 +50,71 @@ cmake -DKokkos_VERSION=git.5.2.0 -DHeffte_VERSION=git.v2.4.1 ...
 cmake -DHeffte_VERSION=git.9eab7c0eb18e86acaccc2b5699b30e85a9e7bdda ...  
 ```
 Note that by default, Kokkos release tags use a format such as `5.2.0` and Heffte git tags (extra `v`) are of the form `vx.x.x` (for example, `v2.4.1`).
+
+### Kokkos Kernels
+
+Kokkos Kernels support is optional and disabled by default. Enable it with:
+
+```bash
+cmake -S <src_dir> -B <build_dir> \
+    -DIPPL_ENABLE_KOKKOS_KERNELS=ON
+```
+
+IPPL first searches for an installed Kokkos Kernels package compatible with the
+selected Kokkos configuration. If none is found, it builds Kokkos Kernels with
+`FetchContent`. The following cache variables control the feature:
+
+- `IPPL_ENABLE_KOKKOS_KERNELS`, default `OFF`: enable Kokkos Kernels and the
+  corresponding IPPL unit test.
+- `KokkosKernels_VERSION`, default `5.2.0`: requested installed package version.
+  A value such as `git.5.2.0` or `git.<commit>` requests a source build.
+- `IPPL_KOKKOS_KERNELS_HOST`, default `LAPACKE`: select `LAPACKE`, `MKL`, or
+  `NONE` as the host eigenanalysis provider.
+- `IPPL_LAPACK_INTEGER_BYTES`, default `4`: select the 4-byte LP64 or 8-byte
+  ILP64 integer interface.
+- `IPPL_FETCH_LAPACKE`, default `ON`: build reference BLAS, LAPACK, and LAPACKE
+  when an installed LAPACKE provider cannot be found.
+- `IPPL_LAPACKE_BUILD_JOBS`, default `4`: number of parallel jobs for the
+  reference LAPACK build. This entry is created only when the fallback is used.
+- `IPPL_LAPACKE_TOOLCHAIN_FILE`, default empty: C/Fortran toolchain for the
+  fallback. A suitable toolchain is required when cross-compiling.
+
+The host provider is independent of `IPPL_PLATFORMS`. CUDA builds enable cuBLAS,
+cuSOLVER, and cuSPARSE in Kokkos Kernels; HIP builds enable rocBLAS, rocSOLVER,
+and rocSPARSE. These GPU libraries come from the selected CUDA or ROCm toolkit.
+Kokkos and Kokkos Kernels do not install them.
+
+For an installed LAPACKE provider, set `LAPACKE_ROOT` or provide
+`LAPACKE_INCLUDE_DIRS` and `LAPACKE_LIBRARIES`. `LAPACKE_LIBRARY_DIRS` can be
+used to resolve non-absolute library names. `LAPACKE_LIBRARIES` must contain the
+complete semicolon-separated link line, including static transitive dependencies
+such as the Fortran runtime. Absolute paths, imported CMake targets, and linker
+items such as `-lm` are supported. For oneMKL, select `MKL` and provide `MKL_DIR`
+or add its installation prefix to `CMAKE_PREFIX_PATH`:
+
+```bash
+cmake -S <src_dir> -B <build_dir> \
+    -DIPPL_ENABLE_KOKKOS_KERNELS=ON \
+    -DIPPL_KOKKOS_KERNELS_HOST=MKL \
+    -DMKL_DIR=<mkl-cmake-directory>
+```
+
+When LAPACKE is unavailable, the default fallback downloads the SHA256-verified
+reference LAPACK 3.12.1 sources and builds static position-independent BLAS,
+LAPACK, and LAPACKE libraries in an isolated host C/Fortran project. Select the
+Fortran compiler with `CMAKE_Fortran_COMPILER` or the `FC` environment variable;
+select the host C compiler with `CC`. Set `IPPL_FETCH_LAPACKE=OFF` to require an
+installed provider instead.
+
+For offline builds, point `FETCHCONTENT_SOURCE_DIR_KOKKOSKERNELS` and
+`FETCHCONTENT_SOURCE_DIR_IPPL_REFERENCE_LAPACK` at unpacked source trees. An
+installed Kokkos Kernels package can be selected directly with
+`KokkosKernels_DIR`.
+
+Set `IPPL_KOKKOS_KERNELS_HOST=NONE` when only portable or GPU kernels are needed.
+This omits host eigenanalysis and its LAPACKE or MKL dependency. Configure checks
+the selected host provider's headers, integer size, link line, and, for native
+builds, a small eigenvalue calculation before generating the IPPL build.
 
 Furthermore, be aware of `CMAKE_BUILD_TYPE`, which can be either
 - `Release` for optimized builds
