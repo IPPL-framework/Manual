@@ -98,6 +98,8 @@ format:
     theme:
       - cosmo
       - includes/styles.css
+    include-after-body:
+      - includes/persist-sidebar-state.html
 
 bibliography: references.bib
 csl: csl/ieee.csl

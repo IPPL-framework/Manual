@@ -1,0 +1,89 @@
+<script>
+(() => {
+  const storageKey = "ippl-sidebar-state-v1";
+
+  const readState = () => {
+    try {
+      return JSON.parse(window.localStorage.getItem(storageKey) || "{}") || {};
+    } catch (_) {
+      return {};
+    }
+  };
+
+  const writeState = (state) => {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch (_) {
+      // Keep navigation usable when storage is unavailable or disabled.
+    }
+  };
+
+  const sectionKey = (section) => {
+    if (section.dataset.ipplStateKey) return section.dataset.ipplStateKey;
+    const heading = section.previousElementSibling?.querySelector(".menu-text");
+    return heading?.textContent.trim() || section.id;
+  };
+
+  const setExpanded = (section, expanded) => {
+    section.classList.toggle("show", expanded);
+    const selector = `[data-bs-target="#${section.id}"]`;
+    document.querySelectorAll(selector).forEach((control) => {
+      control.classList.toggle("collapsed", !expanded);
+      control.setAttribute("aria-expanded", String(expanded));
+    });
+  };
+
+  const restoreState = () => {
+    const state = readState();
+    document.querySelectorAll(".sidebar-section[id]").forEach((section) => {
+      const key = sectionKey(section);
+      if (Object.prototype.hasOwnProperty.call(state, key)) {
+        setExpanded(section, Boolean(state[key]));
+      }
+    });
+  };
+
+  const initialize = () => {
+    const state = readState();
+    let stateChanged = false;
+
+    document.querySelectorAll(".sidebar-section[id]").forEach((section) => {
+      const key = sectionKey(section);
+      if (Object.prototype.hasOwnProperty.call(state, key)) {
+        setExpanded(section, Boolean(state[key]));
+      } else {
+        state[key] = section.classList.contains("show");
+        stateChanged = true;
+      }
+
+      section.addEventListener("shown.bs.collapse", () => {
+        const nextState = readState();
+        nextState[key] = true;
+        writeState(nextState);
+      });
+
+      section.addEventListener("hidden.bs.collapse", () => {
+        const nextState = readState();
+        nextState[key] = false;
+        writeState(nextState);
+      });
+    });
+
+    if (stateChanged) {
+      writeState(state);
+    }
+
+    document.documentElement.dataset.ipplSidebarStateReady = "true";
+  };
+
+  // Quarto finalizes the book sidebar after DOMContentLoaded. Restoring before
+  // that step lets its collapse initialization overwrite the saved state.
+  if (document.readyState === "complete") {
+    initialize();
+  } else {
+    window.addEventListener("load", initialize, { once: true });
+  }
+
+  window.addEventListener("pageshow", restoreState);
+})();
+</script>

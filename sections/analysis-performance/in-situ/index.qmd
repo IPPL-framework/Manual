@@ -1,12 +1,694 @@
 ---
-subtitle: "In situ analysis and visualization with ParaView Catalyst."
+subtitle: "In situ analysis, visualization, data extraction, and parameter steering with ParaView Catalyst."
 ---
 
 # In Situ {#sec-in-situ}
 
-coming soon!
+IPPL provides optional in situ visualization and steering through the
+[ParaView Catalyst](https://catalyst-in-situ.readthedocs.io/) 2 API. Simulation data is
+described with Conduit Blueprint and handed directly to a Catalyst implementation while the
+simulation is running. This avoids writing a complete simulation state merely to visualize it.
 
-## Visualization
+The integration currently supports:
 
+- live visualization in a ParaView client;
+- automatic PNG extraction;
+- VTK partitioned-dataset extraction for post-processing;
+- interactive steering through a generated ParaView proxy; and
+- one-, two-, and three-dimensional particle and field data.
+
+## Internal Architecture
+
+
+```{mermaid}
+flowchart TB
+  
+  P[Particle containers]
+  F[Scalar and vector fields]
+  S[Simulation Parameters]
+  VR[Visualization registry]
+  SR[Steering registry]
+
+  SR[Steering registry]
+  CA[CatalystAdaptor]
+  Ca[libCatalyst]
+  PVCa[ParaviewCatalyst]
+  PV[Paraview]
+
+  P --> VR
+  F --> VR
+  S <--> SR
+
+  VR --> CA
+  SR <--> CA
+
+  CA <-->|via. Conduit Blueprint| Ca
+  Ca <--> PVCa
+
+  PVCa --> PNG[PNG extracts]
+  PVCa --> VTK[VTK extracts]
+  PVCa --> PV[ParaView GUI Live Viuslization]
+  PVCa <--> SI[ParaView GUI Steering Interface]
+
+
+```
+
+`CatalystAdaptor` owns the Catalyst lifecycle. A `VisRegistryRuntime` holds references to the
+objects that should be published or steered. At each `Execute()` call, the adaptor creates
+host-accessible snapshots, points Conduit at those owned buffers, calls Catalyst synchronously,
+and then applies returned steering values.
+
+## Supported visualization data
+
+| C++ data | Catalyst/Conduit representation | Additional data arrays |
+|---|---|---|
+| `Field<T, Dim, ...>` with scalar `T` | Uniform mesh with scalar element data | `RankID` |
+| `Field<Vector<T, N>, Dim, ...>` with `N` from one to three | Uniform mesh with vector element data | `RankID` |
+| A particle container derived from `ParticleBaseBase` | Multimesh containing an unstructured point block and a domain-bounds helper block | `position`, `RankID`, optional `ParticleIDs`, and custom attributes |
+
+Fields and particles may have one, two, or three spatial dimensions. Custom particle attributes currently support scalar values and one- to three-component `ippl::Vector` values. 
+
+Visualization data is staged on `Kokkos::HostSpace` (deep copied into host-accessible views) before Catalyst is called. These views remain alive until Catalyst has finished the current `Execute()` call.
+
+
+## Building IPPL with Catalyst
+
+The relevant requirements are:
+
+- CMake 3.26 or newer;
+- IPPL's normal dependencies;
+- a ParaView distribution that contains a compatible Catalyst Python implementation (these usually are included in the Linux binaries but not for Mac:(  ))
+
+<!-- (Catalyst -- like Kokkos and Heffte -- will be installed by the cmake during the build process.) -->
+
+Enable IPPL's in Situ libaray components by activating `IPPL_ENABLE_CATALYST` in the cmake:
+
+```bash
+cmake -S /path/to/ippl -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DIPPL_PLATFORMS=SERIAL \
+  -DIPPL_ENABLE_SOLVERS=ON \
+  -DIPPL_ENABLE_FFT=ON \
+  -DIPPL_ENABLE_CATALYST=ON 
+
+cmake --build build -j
+```
+
+IPPL first searches for a compatible Catalyst CMake package. If none is found, it fetches and builds Catalyst automatically. The default is Catalyst 2.1.0 with MPI enabled. A separately installed Catalyst package can be selected with either its package directory or installation prefix:
+
+```bash
+cmake -S /path/to/ippl -B build \
+  -DIPPL_ENABLE_CATALYST=ON \
+  -DCatalyst_DIR=/path/to/catalyst/lib/cmake/catalyst-2.1
+```
+
+`catalyst_DIR` and `CATALYST_DIR` are also accepted. To fetch a particular tag, branch, or commit, use a `git.` value, for example `-DCatalyst_VERSION=git.v2.1.0`. 
+
+::: {.callout-warning title="MPI compatibility"}
+IPPL, the Catalyst SDK, and the ParaView Catalyst implementation must use compatible MPI
+implementations. Mixing MPI libraries can produce load-time failures, hangs, or crashes even when
+the application linked successfully.
+:::
+
+### Runtime resources in build and install trees
+
+The Python pipelines and steering YAML file are runtime resources. A normal
+build copies them from `src/Stream/InSitu/catalyst_scripts` to:
+
+`
+<build-dir>/share/ippl/catalyst_scripts
+`
+
+This staging is part of the default build
+<!-- through the `ippl_catalyst_resources` target. -->
+Editing a source script causes the corresponding build-tree copy to be refreshed. 
+
+
+<!-- 
+`cmake --install` installs the same resources under:
+
+```text
+<install-prefix>/share/ippl/catalyst_scripts
+``` -->
+
+<!-- The generated build-tree and install-tree IPPL packages compile the appropriate resource path into the consumer target. Users should not copy or reference the source-tree scripts manually. The explicit staging target can be invoked when only the scripts need refreshing:
+
+```bash
+cmake --build build --target ippl_catalyst_resources
+``` -->
+
+
+
+
+
+## Integrating In Situ Analysis into an IPPL application
+
+Include the adaptor only in Catalyst-enabled code:
+
+```cpp
+#ifdef IPPL_ENABLE_CATALYST
+#include "Stream/InSitu/CatalystAdaptor.h"
+#endif
+```
+
+The typical lifecycle is:
+
+1. create the adaptor and registries after IPPL has been initialized;
+2. register visualization and steering objects;
+3. call `Initialize()` once;
+4. call `Execute(cycle, time)` at each desired visualization point; and
+5. call `Finalize()` once before IPPL is finalized.
+
+
+### Particle attribute names and default coloring
+
+Give every custom particle attribute a descriptive name before adding it to its particle container. The specified attribute string will appear again when you wan't to set up visualization of particle in the ParaView client later on. For the
+
+```cpp
+void registerAttributes() {
+    velocity.set_name("velocity");
+    electricField.set_name("electric_field");
+    charge.set_name("charge");
+
+    // Registration order also determines the default PNG coloring preference.
+    this->addAttribute(velocity);
+    this->addAttribute(electricField);
+    this->addAttribute(charge);
+}
+```
+
+The default particle PNG extractor selects the magnitude of first custom attribute (not `position`, `ParticleIDs`, or `RankID`) for coloring different particles. If no custom attribute is available, particles are rendered solid red. So register the most meaningful quantity first so the default script can work in you favour (or adapt the particle extraction script to your personal needs).
+
+
+### Creating registries
+
+A visualization/steering registry can be populated either through the factory or incrementally:
+
+```cpp
+auto visualization = ippl::MakeVisRegistryRuntimePtr(
+    "density", particlesAndFields->getRho(),
+    "particles", particleContainer
+);
+
+visualization->add("electric_field", particlesAndFields->getE());
+
+auto steering = ippl::MakeVisRegistryRuntimePtr();
+```
+
+Labels must be unique within a registry. Objects added by reference must outlive the registry; objects added as `std::shared_ptr` are kept alive by the registry. The adaptor retains shared pointers to both registries after `Initialize()`. Currently even if empty a steering registry must be submitted to the adaptor.
+
+### Constructing and initializing the adaptor
+
+The constructor accepts an optional experiment name. It is used by the default PNG scripts to
+separate output from different applications, but is not otherwise required:
+
+```cpp
+#ifdef IPPL_ENABLE_CATALYST
+ippl::CatalystAdaptor catalyst{"MySimulation"};
+// This is also valid:
+// ippl::CatalystAdaptor catalyst;
+
+catalyst.Initialize(visualization, steering);
+#endif
+```
+
+### Choosing the execution point
+
+During a timestep call `Execute()` only after all data intended for that frame is valid:
+
+```cpp
+#ifdef IPPL_ENABLE_CATALYST
+catalyst.Execute(iteration, simulationTime);
+#endif
+```
+
+The call is synchronous. IPPL constructs the host snapshots before entering Catalyst, so normal
+simulation updates may safely continue after `Execute()` returns.
+
+If an algorithm overwrites or resets a registered field before the desired visualization point,
+capture it earlier with `rememberNow()`:
+
+```cpp
+scatterCIC(); //some method computing current density field
+
+#ifdef IPPL_ENABLE_CATALYST
+catalyst.rememberNow("density");
+#endif
+
+solveFieldEquation();  // may reset or reuse density storage
+
+#ifdef IPPL_ENABLE_CATALYST
+catalyst.Execute(iteration, simulationTime);
+#endif
+```
+
+`rememberNow(label)` creates and retains the host snapshot for that one channel until the next
+`Execute()`. The label must already be present in the initialized visualization registry. Use it
+only where necessary because it performs the data copy earlier and increases peak memory use.
+
+### Finalization
+
+```cpp
+#ifdef IPPL_ENABLE_CATALYST
+catalyst.Finalize();
+#endif
+```
+
+Applications should protect against finalizing the same adaptor twice, especially when both an explicit shutdown path and a destructor perform cleanup.
 
 ## Steering
+
+Steering sends the current C++ values to ParaView and writes returned values back into the same
+registered objects. Functional interactive steering currently requires both
+`IPPL_CATALYST_LIVE=ON` and `IPPL_CATALYST_STEER=ON`.
+
+Supported steerable types are:
+
+| Category | Types |
+|---|---|
+| Numeric scalars | Arithmetic C++ types such as `int`, `float`, and `double` |
+| Controls | `bool` and the momentary `ippl::Button` |
+| Enumerations | `enum` and `enum class` |
+| Small vectors | `ippl::Vector<T, Dim>` with one to three components |
+| Arrays | `std::vector` of arithmetic values, booleans, buttons, enums, or IPPL vectors |
+| Compound values | Registered user structs and `std::vector` of registered structs |
+
+Nested structs are not supported. 
+<!-- Register only stable lvalues because Catalyst writes updates through the stored references. -->
+
+### Scalars, switches, and buttons
+
+```cpp
+double electricScale = 30.0;
+int numberOfSteps = 1000;
+bool enableFeature = false;
+ippl::Button resetButton{false};
+
+auto steering = ippl::MakeVisRegistryRuntimePtr(
+    "electric_scale", electricScale,
+    "number_of_steps", numberOfSteps,
+    "enable_feature", enableFeature,
+    "reset", resetButton
+);
+```
+
+An `ippl::Button` models a one-shot action rather than a persistent Boolean switch. In the ParaView interface both arre displayed as checkboxy, to retrigger a button you have to "uncheck" and "apply" befor triggering with "check", "apply" again.
+### Enumerations
+
+Register display names by enum type before `Initialize()` so ParaView can create a drop-down:
+
+```cpp
+enum class SolverType {
+    FFT,
+    PCG,
+    FEM
+};
+
+ExperimentType experiment = ExperimentType::PenningTrap;
+
+catalyst.RegisterEnumChoicesTyped<SolverType>({
+    {"FFT", SolverType::FFT},
+    {"PCG", SolverType::PCG},
+    {"FEM", SolverType::FEM}
+});
+
+steering->add("Solver Type", SolverType);
+```
+
+If no choices are registered, the current proxy writer falls back to a Boolean-style control, which is generally not useful for a multi-valued enum.
+
+### User-defined structs
+
+Register a struct layout once before adding an instance to the registry:
+
+```cpp
+struct SimulationParameters {
+    int steps;
+    double temperature;
+    bool enabled;
+    ippl::Button reset;
+    ippl::Vector<double, 3> offset;
+    SolverType Solver;
+};
+
+ippl::CatalystAdaptor::RegisterStructMembers<SimulationParameters>(
+    "steps", &SimulationParameters::steps,
+    "temperature", &SimulationParameters::temperature,
+    "enabled", &SimulationParameters::enabled,
+    "reset", &SimulationParameters::reset,
+    "offset", &SimulationParameters::offset,
+    "Solver", &SimulationParameters::Solver
+);
+
+SimulationParameters parameters{
+    100, 2.5, true, ippl::Button{false}, {0.0, 0.0, 0.0},
+    SolverType::FFT
+};
+
+steering->add("simulation", parameters);
+```
+Plain `std::vector` labels are normalized internally with an `array:` prefix. It's size and values can dynamically be adjusted. Arrays can be resized through the ParaView steering interface. For Arrays of structs, each array component is listed seprately and shows all it's struct subcomponents.
+
+
+### Configuring steering ranges
+
+The default `proxy_default_config.yaml` is staged and installed with the Python scripts. Supply a
+custom file through `IPPL_PROXY_CONFIG_YAML`:
+
+```yaml
+ranges:
+  electric_scale:
+    min: 1.0
+    max: 99.0
+    default: 30.0
+  simulation.temperature:
+    min: 0.1
+    max: 10.0
+```
+
+`min`, `max`, and `default` are optional numeric values. For normal scalar steering parameter, the already present initial value in a variable, will show up in the interface (default should have no effect for this type of steering parameters). Instead the default value should be specified for arrays, since it will be used for new entries that are dynamically added. Further specifying a min max range, will trigger a slider widget inside the paraview steering interface if possible.
+
+## Runtime configuration
+
+There are different mandatory and optional runtime configurations, which have to be set via. Environment Variables to configure the runtime behaviour of the IPPL Catalyst components.
+
+### Selecting the ParaView Catalyst implementation
+
+One has to link Catalyst with a valid backend (ParaView Catalyst), at runtime. For this we just have to point Catalyst to the backend implementation shipped with a ParaView distribution (easiest to add this to a run.sh bas script).
+ 
+
+```bash
+export PV_PREFIX=/path/to/ParaView
+export CATALYST_IMPLEMENTATION_NAME=paraview
+export CATALYST_IMPLEMENTATION_PATHS="${PV_PREFIX}/lib64/catalyst"
+```
+
+Some distributions use `lib` instead of `lib64`. Use the directory that actually contains the
+ParaView Catalyst implementation.
+
+
+<!-- 
+Not true i think?...The implementation and its Python libraries must also be visible to the dynamic loader. In some cases this might has to be handled manually/separately by adding.
+
+```bash
+export LD_LIBRARY_PATH="${PV_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+``` -->
+
+Most installations need no additional setting. But in some cases the correct Python libraries must also be visible to the dynamic loader. If loading fails specifically because the bundled Python library cannot be resolved, preload the exact library shipped by that ParaView build:
+
+```bash
+export LD_PRELOAD="${PV_PREFIX}/lib/libpython3.12.so.1.0${LD_PRELOAD:+:${LD_PRELOAD}}"
+```
+
+<!-- `CATALYST_IMPLEMENTATION_PATHS` only locates the Catalyst implementation; it does not change the system dynamic loader's search for transitive dependencies such as `libpython`. Do not hard-code Python 3.12 unless that is the version present in the selected ParaView distribution. -->
+
+### IPPL variables
+
+All of the following can be set optionally to change the IPPL insitu behaviour.
+
+#### Basic
+
+| Variable | Values | Default | Effect |
+|---|---|---|---|
+| `IPPL_CATALYST_VIS` | `ON`, `OFF` | `ON` | Master runtime switch. When off, adaptor lifecycle calls return without invoking Catalyst. |
+| `IPPL_CATALYST_LIVE` | `ON`, `OFF` | `OFF` | Enable the Catalyst Live connection on `localhost:22222`. |
+| `IPPL_CATALYST_STEER` | `ON`, `OFF` | `OFF` | Generate and exchange steering channels. Interactive steering also requires live mode. |
+| `IPPL_CATALYST_PNG` | `ON`, `OFF` | `OFF` | Attach the default PNG extractor script for every visualization registry entry. |
+| `IPPL_CATALYST_VTK` | `ON`, `OFF` | `OFF` | Attach VTK extractors in the main pipeline. |
+| `IPPL_CATALYST_GHOST_MASKS` | `ON`, `OFF` | `OFF` | Include halo cells and mark them with `vtkGhostType`; when off, halo cells are removed before publication. |
+| `IPPL_CATALYST_VERBOSITY` | integer | global IPPL info level | Override the Catalyst informational output level. Most Catalyst informational messages are emitted at level 4, so setting this to 3 or below drastically reduced logging regarding in situ components. |
+
+
+
+Only the literal value `ON` enables a Boolean feature. `IPPL_CATALYST_VIS` is the exception: every
+value other than `OFF` leaves visualization enabled.
+ 
+`IPPL_CATALYST_VERBOSITY` explicitly overrides `--info`. If it is unset, `--info 0` through `--info 3` suppress IPPL Catalyst information and `--info 4` or higher displays it.  Warnings and errors, including those emitted internally by ParaView or VTK, are not informational messages and may still appear at lower levels.
+
+#### Advanced
+
+The following more advance option may also be changed. 
+
+| Variable | Values | Default | Effect |
+|---|---|---|---|
+| `CATALYST_PIPELINE_PATH` | file path | installed `pipeline_default.py` | Override the main Catalyst Python pipeline. |
+| `CATALYST_EXTRACTOR_SCRIPT_<label>` | file path | extractor selected by data type | Override the PNG extractor for one visualization registry label. |
+| `IPPL_PROXY_CONFIG_YAML` | file path | installed default YAML | Override steering ranges and defaults. |
+| `IPPL_CATALYST_OUTPUT_DIR` | path | `./catalyst` | Directory used for generated adaptor artifacts (currently only the steering proxy XML). |
+| `IPPL_CATALYST_PROXY_OPTION` | `ON`, `OFF`, `PRODUCE_ONLY` | `ON` | Generate and use the proxy, reuse only an existing default proxy, or generate it and stop before the simulation run. |
+| `IPPL_CATALYST_PROXY_PATH` | file path | `<output-dir>/catalyst_proxy.xml` | Use an existing proxy XML at an explicit path instead of generating the default file. |
+
+Be aware that changing these advanced settings mindlessly can easily crash the working insitu default.
+
+
+### Output locations
+
+The default scripts currently produce output relative to the simulation's working directory:
+
+| Output | Location or pattern |
+|---|---|
+| Generated steering proxy | `${IPPL_CATALYST_OUTPUT_DIR}/catalyst_proxy.xml` |
+| PNG images | `data_png_extracts_<experiment-name>/` |
+| Scalar and vector field VTK data | `data_vtk_extracts_*/ippl_<channel>_<timestep>.vtpd` |
+| Particle VTK data | `data_vtk_extracts_*/ippl_<channel>_<timestep>.vtpc` |
+
+At present, `IPPL_CATALYST_OUTPUT_DIR` does not redirect PNG or VTK extracts. 
+
+## Visualization workflows
+
+The modes can be combined, although running live visualization, steering, PNG extraction, and VTK extraction together increases runtime and memory overhead. But be aware that from the ParaView GUI the PNG extractors can be directly manipulated (which can "ruin them"), if live is enabled.
+
+
+### Live ParaView connection
+
+1. Set `IPPL_CATALYST_LIVE=ON` and start the simulation.
+2. Open the same compatible ParaView distribution used by    `CATALYST_IMPLEMENTATION_PATHS`. In ParaView, choose **Catalyst → Connect**, use host `localhost` and port `22222`, and connect.
+4. Extract the desired Catalyst sources in the Pipeline Browser.
+5. Apply normal ParaView representations, filters, and color maps.
+
+(steps 1 and 2 can also be interchanged)
+
+The simulation can be paused from the Catalyst controls in ParaView. 
+
+For steering, load the generated `catalyst_proxy.xml` inside the ParaView GUI before connecting to Catalyst :
+
+1. choose **Tools → Manage Plugins → Load New**;
+2. select `${IPPL_CATALYST_OUTPUT_DIR}/catalyst_proxy.xml`;
+3. optionally enable **Auto Load** for later sessions; and
+4. connect to the live simulation with both `IPPL_CATALYST_LIVE=ON` and
+   `IPPL_CATALYST_STEER=ON`.
+
+Be aware that if on startup the Plugin auto load can't find the configured proxy file no mlonger at the specified location (because e.g you removed the file), ParaView may remove its stale plugin entry and the file must be loaded again manually.
+Further if the proxy file changed while the GUI remained open, you should either reload the plugin manually or by restarting the GUI.
+
+
+### PNG extraction
+
+Set:
+
+```bash
+export IPPL_CATALYST_PNG=ON
+```
+
+The default scalar-field, vector-field, and particle scripts create one image per Catalyst execution. To suppress PNG extraction for one registry entry without recompiling, point its script override at the installed empty extractor e.g:
+
+```bash
+export CATALYST_EXTRACTOR_SCRIPT_particles="/path/to/build/share/ippl/catalyst_scripts/catalyst_extractors/png_ext_empty.py"
+```
+`particles` here represents an exact registry label (we will look for a more elegant solution in upcoming updates).
+
+### VTK extraction
+
+Set:
+
+```bash
+export IPPL_CATALYST_VTK=ON
+```
+
+The main pipeline writes field meshes as VTPD files and particle multimeshes as VTPC files. Open the generated files in ParaView for post-processing. 
+
+<!-- 
+### External Trame clients
+
+The live sources and generated steering proxy can be consumed by a compatible external Trame application. We currently consider a trame based IPPL companion client, for which we have some buggy prototypes :D  -->
+
+
+
+## Remote live visualization
+
+PNG and VTK extraction work remotely without a GUI connection. For interactive visualization with ParaView 6.0 and newer, a common cluster arrangement is:
+
+1. allocate a compute node;
+2. load a ParaView server build and an MPI stack compatible with IPPL;
+3. start `pvserver` on the compute node;
+4. forward the server port through the login node; and
+5. connect a matching local ParaView client before launching the simulation on the same compute
+   node.
+
+For example, on the compute node:
+
+```bash
+mpiexec pvserver --sp=11111
+
+# For GPU GL rendering backend ...
+# mpiexec pvserver --sp=11111 --system-mpi --mesa
+# in general see "pvserver --help" for possible configurations.
+```
+
+From one local terminal, forward the server port:
+
+```bash
+ssh -N -L 11111:compute-node:11111 user@login-node
+```
+
+Then connect the client from another local terminal:
+
+```bash
+paraview --server-url=cs://localhost:11111 --live=22222
+```
+
+Then run the Catalyst-enabled simulation on the compute node. `pvserver` listens for the primary Catalyst connection on port 22222, while the local client communicates through the forwarded server port.
+
+::: {.callout-warning title="ParaView 5.X pvserver and rendering backends"}
+Older ParaVew version handle pvserver renderng backends slighlty different (e.g. via shipping of different Headless server binaries). So we generally recommend using version 6.0 and newer, where all of this was combined into a single binary.
+:::
+
+## Complete run example
+
+The Alpine `PenningTrap` demo is instrumented with density, particles, and electric-field channels.
+A small local run can be configured as follows:
+
+```bash
+export PV_PREFIX=/path/to/ParaView
+export CATALYST_IMPLEMENTATION_NAME=paraview
+export CATALYST_IMPLEMENTATION_PATHS="${PV_PREFIX}/lib/catalyst"
+export LD_LIBRARY_PATH="${PV_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
+export IPPL_CATALYST_VIS=ON
+export IPPL_CATALYST_LIVE=OFF
+export IPPL_CATALYST_STEER=OFF
+export IPPL_CATALYST_PNG=ON
+export IPPL_CATALYST_VTK=OFF
+export IPPL_CATALYST_OUTPUT_DIR="${PWD}/catalyst"
+
+mpiexec -n 2 build/demos/alpine/PenningTrap \
+  32 32 32 10000 10 FFT 0.01 LeapFrog \
+  --overallocate 1.0 --info 4
+```
+
+The `FreeElectronLaser` demo publishes particles, electric field, and magnetic field. Both demos
+show the current registry/adaptor lifecycle in application code. Catalyst-specific blocks remain
+guarded by `IPPL_ENABLE_CATALYST`, so the applications can also be built against an IPPL
+configuration without in situ support.
+
+## Performance and profiling
+
+Catalyst execution may dominate short simulation steps. The principal costs are device-to-host/layout-conversion copies, optional early snapshots from `rememberNow()`, ParaView pipeline execution, rendering, and file output. Live mode and steering also incur work even when the client does not currently display a source.
+
+IPPL records the following timers when their paths are exercised:
+
+- `catalyst_execute`;
+- `execVizVisitor`;
+- `execSteerVisitor`; and
+- `fetchSteerParameters`.
+
+They are reported with the normal IPPL timing output. For performance runs, register only needed
+channels, disable unused modes, and avoid `rememberNow()` where `Execute()` can be placed directly
+after the data is produced.
+
+## Troubleshooting
+
+### Multiple MPI libraries are loaded
+
+Inspect the executable and the ParaView implementation with `ldd` or the platform equivalent.
+Rebuild or select packages so IPPL, Catalyst, and ParaView all use one compatible MPI stack. Merely
+changing the launcher does not repair incompatible linked libraries.
+
+
+### The proxy XML is missing
+
+- Ensure `IPPL_CATALYST_OUTPUT_DIR` exists or can be created and is writable.
+- Leave `IPPL_CATALYST_PROXY_OPTION=ON` to generate the file.
+- Use `PRODUCE_ONLY` to generate the proxy without entering the simulation. The adaptor signals the
+  intentional early stop with an `IpplException` containing the generated path.
+
+### Steering controls appear but values do not return
+
+- Enable both live mode and steering.
+- Register enum metadata and struct members before `Initialize()`.
+- Load the generated proxy in the ParaView client before connecting.
+- Keep all registered C++ objects alive.
+- An absent backward result is expected when no steering client is connected. It is unexpected once
+  an active client has changed and submitted a control.
+- ParaView may report that a zero sized array is present, in case of an empty steerable vector (warning is logged once per timestep). If the C++ vector is genuinely empty, this message can be ignored (it will disappear as soon as you add the first array component via. the paraview steering interface).
+
+
+### A channel is empty, stale, or missing in ParaView
+
+- Verify that the label was added to the visualization registry before `Initialize()`.
+- Call `Execute()` after the registered data has been computed.
+- If the algorithm resets the object befor `Execute()` is called, call `rememberNow(label)` immediately after the desired
+  state is produced.
+- Give all custom particle attributes unique names with `set_name()` before `addAttribute()`.
+- Do not register pointers or references to temporary objects.
+- Else Print the contents of the entire conduit node from within the Catalyst Adaptor, to check if channel information appears there.
+
+### No IPPL Catalyst information is printed
+
+All adaptor and script informational messages use level 4. Run with `--info 4` or set
+`IPPL_CATALYST_VERBOSITY=4`. An explicit environment value takes precedence over `--info`.
+ParaView's own plugin-status messages and VTK warnings use a separate logging system.
+
+
+## Known limitations
+
+- A valid Visualization and Steering Registry have to be passed to the CatalystAdaptor for proper initialization. An empty registry is valid and can easily  be generated with the factory method.
+- The default pipeline's live URL is fixed to `localhost:22222`.
+- Default PNG and VTK extractors run every Catalyst execution; extraction frequency is not yet an IPPL runtime option, but can currently be simply controlled and configured by only calling Execute every n'th timestep in your own simulation code.
+- Multi-component vector range widgets depend on capabilities of the chosen ParaView or external Trame client. In different cases, even if a range is specified via the yaml config file, slider widgets might not appear and you have work with simple textfields.
+- Connecting a live ParaView client only after PNG extractors have initialized has caused extractor instability with some ParaView versions. Connect the client before the first Catalyst execution when live mode and PNG extraction are combined.
+- Performance is currently WIP 
+
+
+## Implementation resources
+
+The principal source locations are:
+
+- `src/Stream/InSitu/CatalystAdaptor.h` and `CatalystAdaptor.hpp`: adaptor lifecycle and Conduit
+  publication;
+- `src/Stream/InSitu/CatalystAdaptorSteering.hpp`: steering type handling and write-back;
+- `src/Stream/Registry/VisRegistryRuntime.h`: heterogeneous runtime registry;
+- `src/Stream/InSitu/ProxyWriter.*`: generated ParaView steering proxy and Conduit YAML parsing;
+- `src/Stream/InSitu/catalyst_scripts/pipeline_default.py`: live, steering, and VTK pipeline; and
+- `src/Stream/InSitu/catalyst_scripts/catalyst_extractors/`: default PNG pipelines.
+
+For the underlying Catalyst Python model, see the
+[ParaView Catalyst getting-started guide](https://docs.paraview.org/en/latest/Catalyst/getting_started.html).
+
+
+
+
+
+
+## Known Bugs / Upcoming Fixes 
+
+
+- At present, `IPPL_CATALYST_OUTPUT_DIR` does not redirect PNG or VTK extracts. The optional adaptor
+experiment name is forwarded to the per-channel PNG scripts. The default main VTK pipeline still
+uses its fallback experiment suffix, so select the process working directory accordingly when VTK
+extraction is enabled.
+
+- The optional experiment name currently namespaces PNG output but is not forwarded to the main VTK
+  pipeline.
+- The default vector-field PNG filename does not contain the registry label. Enabling PNG extraction
+  for multiple vector fields can therefore produce colliding filenames; use per-label extractor
+  overrides when those images must be kept separately.
+- `IPPL_CATALYST_OUTPUT_DIR` currently controls proxy output, not PNG or VTK directories.
+
+
+## In development
+
+- Zero copy approaches and device staging.
+- More runtime configurations for more flexibility
+- In transit support
+- Performance improvement and guides
